@@ -57,35 +57,25 @@ export class PipraPayGatewayProvider implements IPaymentGateway {
     const config = await this.settingsService.getPipraPayConfig(false);
 
     if (!config.enabled) {
-      throw new BadRequestException('PipraPay payment gateway is currently disabled by admin.');
+      throw new BadRequestException('PipraPay payment gateway is currently disabled in Admin Settings.');
     }
 
     const orderCurrency = (order.currency || 'USD').toUpperCase();
-    if (
-      config.supportedCurrencies &&
-      config.supportedCurrencies.length > 0 &&
-      !config.supportedCurrencies.map((c) => c.toUpperCase()).includes(orderCurrency)
-    ) {
-      this.logger.warn(
-        `Order currency ${orderCurrency} not in PipraPay supported list: ${config.supportedCurrencies.join(', ')}`,
-      );
-    }
-
-    const sessionId = `pp_sess_${crypto.randomBytes(12).toString('hex')}`;
-    const checkoutToken = `pp_tok_${crypto.randomBytes(16).toString('hex')}`;
-
     const returnUrl = options?.successUrl || `${process.env.FRONTEND_URL || 'http://localhost:3000'}/checkout/success`;
     const cancelUrl = options?.cancelUrl || `${process.env.FRONTEND_URL || 'http://localhost:3000'}/checkout`;
     const webhookUrl = `${process.env.BACKEND_URL || 'http://localhost:5001'}/api/v1/public/payments/webhook/piprapay`;
 
-    // Dynamic endpoint target
-    const checkoutUrlEndpoint = this.resolveUrl(
-      config.apiUrl,
-      config.checkoutEndpoint || '/checkout/redirect',
-      '/checkout/redirect',
-    );
+    // Candidate checkout endpoints to try based on merchant settings and documentation
+    const cleanBase = (config.apiUrl || 'https://pay.huipper.com/api').trim().replace(/\/+$/, '');
+    const candidateEndpoints: string[] = [
+      this.resolveUrl(config.apiUrl, config.checkoutEndpoint || '/checkout/', '/checkout/'),
+      `${cleanBase}/checkout/`,
+      `${cleanBase}/checkout/redirect`,
+      `${cleanBase}/create-charge`,
+      `${cleanBase}/checkout`,
+    ].filter((v, i, a) => a.indexOf(v) === i); // unique
 
-    // Payload supporting both V3+ redirect checkout and V1/V2 charge formats
+    // Payload supporting both V3+ redirect checkout and V1/V2 charge schemas
     const payload = {
       full_name: order.customerName || 'Customer',
       email_address: order.customerEmail || 'customer@example.com',
@@ -106,53 +96,84 @@ export class PipraPayGatewayProvider implements IPaymentGateway {
       webhook_url: webhookUrl,
     };
 
-    let checkoutUrl = `${config.apiUrl.replace(/\/api\/?$/, '')}/checkout/${sessionId}?token=${checkoutToken}&order=${encodeURIComponent(order.orderNumber)}`;
-    let externalPaymentId = sessionId;
+    let resolvedCheckoutUrl: string | null = null;
+    let externalPaymentId: string = transaction.transactionId;
+    let lastErrorMessage: string = '';
 
-    // Call live PipraPay API if API key is provided
-    if (config.apiKey && !config.apiKey.startsWith('mock_')) {
-      try {
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 12000);
+    // If real API key is configured, call PipraPay API endpoint
+    if (config.apiKey && !config.apiKey.startsWith('mock_') && !config.apiKey.startsWith('pipra_test_')) {
+      for (const endpoint of candidateEndpoints) {
+        try {
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 10000);
 
-        this.logger.log(`Initiating PipraPay checkout session at ${checkoutUrlEndpoint} for order #${order.orderNumber}`);
+          this.logger.log(`Calling PipraPay API at: ${endpoint}`);
 
-        const response = await fetch(checkoutUrlEndpoint, {
-          method: 'POST',
-          headers: this.buildHeaders(config),
-          body: JSON.stringify(payload),
-          signal: controller.signal,
-        });
+          const response = await fetch(endpoint, {
+            method: 'POST',
+            headers: this.buildHeaders(config),
+            body: JSON.stringify(payload),
+            signal: controller.signal,
+          });
 
-        clearTimeout(timeout);
+          clearTimeout(timeout);
 
-        if (response.ok) {
-          const resData = await response.json();
-          this.logger.log(`PipraPay checkout initiated successfully: ${JSON.stringify(resData)}`);
+          if (response.ok) {
+            const resData = await response.json();
+            this.logger.log(`PipraPay checkout response from ${endpoint}: ${JSON.stringify(resData)}`);
 
-          const targetUrl =
-            resData.pp_url ||
-            resData.payment_url ||
-            resData.checkout_url ||
-            resData.data?.pp_url ||
-            resData.data?.payment_url ||
-            resData.data?.checkout_url;
+            const targetUrl =
+              resData.pp_url ||
+              resData.payment_url ||
+              resData.checkout_url ||
+              resData.url ||
+              resData.data?.pp_url ||
+              resData.data?.payment_url ||
+              resData.data?.checkout_url ||
+              resData.data?.url;
 
-          const paymentId =
-            resData.pp_id?.toString() ||
-            resData.payment_id?.toString() ||
-            resData.id?.toString() ||
-            resData.data?.pp_id?.toString() ||
-            resData.data?.payment_id?.toString();
+            const paymentId =
+              resData.pp_id?.toString() ||
+              resData.payment_id?.toString() ||
+              resData.id?.toString() ||
+              resData.data?.pp_id?.toString() ||
+              resData.data?.payment_id?.toString();
 
-          if (targetUrl) checkoutUrl = targetUrl;
-          if (paymentId) externalPaymentId = paymentId;
-        } else {
-          const errText = await response.text();
-          this.logger.warn(`PipraPay API returned HTTP ${response.status}: ${errText}`);
+            if (targetUrl) {
+              resolvedCheckoutUrl = targetUrl;
+              if (paymentId) externalPaymentId = paymentId;
+              break; // Success! Stop probing further endpoints
+            }
+          } else {
+            const errBody = await response.text();
+            lastErrorMessage = `Endpoint ${endpoint} returned HTTP ${response.status}: ${errBody}`;
+            this.logger.warn(lastErrorMessage);
+
+            // If 401 Unauthorized, fail fast
+            if (response.status === 401 || response.status === 403) {
+              throw new BadRequestException(
+                `PipraPay Authentication Failed (HTTP ${response.status}): The API Key configured in Admin Settings is invalid or unauthorized for ${config.apiUrl}. Please verify your MHS-PIPRAPAY-API-KEY.`,
+              );
+            }
+          }
+        } catch (fetchErr: any) {
+          if (fetchErr instanceof BadRequestException) throw fetchErr;
+          lastErrorMessage = fetchErr.message;
+          this.logger.warn(`Fetch error for PipraPay endpoint ${endpoint}: ${fetchErr.message}`);
         }
-      } catch (apiErr: any) {
-        this.logger.warn(`PipraPay API request failed, falling back to direct checkout URL: ${apiErr.message}`);
+      }
+    }
+
+    // If sandbox / test mode without live key, provide seamless sandbox redirection
+    if (!resolvedCheckoutUrl) {
+      if (config.sandboxMode || !config.apiKey || config.apiKey.startsWith('mock_') || config.apiKey.startsWith('pipra_test_')) {
+        const testSessionId = `pp_test_${crypto.randomBytes(8).toString('hex')}`;
+        resolvedCheckoutUrl = `${returnUrl}?orderNumber=${encodeURIComponent(order.orderNumber)}&transactionId=${encodeURIComponent(transaction.transactionId)}&gateway=piprapay&mode=sandbox&status=completed`;
+        externalPaymentId = testSessionId;
+      } else {
+        throw new BadRequestException(
+          `Unable to create PipraPay checkout session. PipraPay API response: ${lastErrorMessage || 'No checkout URL returned'}. Please check API Key and Endpoint settings in /admin/settings/piprapay.`,
+        );
       }
     }
 
@@ -160,7 +181,7 @@ export class PipraPayGatewayProvider implements IPaymentGateway {
       gateway: this.gatewayName,
       transactionId: transaction.transactionId,
       sessionId: externalPaymentId,
-      checkoutUrl,
+      checkoutUrl: resolvedCheckoutUrl,
       paymentMethod: 'piprapay_wallet_card',
       amount: order.total,
       currency: orderCurrency,
@@ -182,45 +203,49 @@ export class PipraPayGatewayProvider implements IPaymentGateway {
     paymentId: string,
     config: PipraPayConfig,
   ): Promise<{ isValid: boolean; data?: any; error?: string }> {
-    if (!paymentId || !config.apiKey || config.apiKey.startsWith('mock_')) {
+    if (!paymentId || !config.apiKey || config.apiKey.startsWith('mock_') || config.apiKey.startsWith('pipra_test_')) {
       return { isValid: true };
     }
 
-    const verifyUrlEndpoint = this.resolveUrl(
-      config.apiUrl,
-      config.verifyEndpoint || '/verify-payment',
-      '/verify-payment',
-    );
+    const cleanBase = (config.apiUrl || 'https://pay.huipper.com/api').trim().replace(/\/+$/, '');
+    const candidateEndpoints = [
+      this.resolveUrl(config.apiUrl, config.verifyEndpoint || '/verify-pay', '/verify-pay'),
+      `${cleanBase}/verify-pay`,
+      `${cleanBase}/verify-payment`,
+      `${cleanBase}/verify-payments`,
+    ].filter((v, i, a) => a.indexOf(v) === i);
 
-    try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 8000);
+    for (const endpoint of candidateEndpoints) {
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 8000);
 
-      const response = await fetch(verifyUrlEndpoint, {
-        method: 'POST',
-        headers: this.buildHeaders(config),
-        body: JSON.stringify({ pp_id: paymentId, invoice_id: paymentId }),
-        signal: controller.signal,
-      });
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          headers: this.buildHeaders(config),
+          body: JSON.stringify({ pp_id: paymentId, invoice_id: paymentId }),
+          signal: controller.signal,
+        });
 
-      clearTimeout(timeout);
+        clearTimeout(timeout);
 
-      if (response.ok) {
-        const resData = await response.json();
-        const dataObj = resData.data || resData;
-        const status = (dataObj.status || resData.status || '').toString().toLowerCase();
+        if (response.ok) {
+          const resData = await response.json();
+          const dataObj = resData.data || resData;
+          const status = (dataObj.status || resData.status || '').toString().toLowerCase();
 
-        const isSuccess =
-          status === 'completed' ||
-          status === 'paid' ||
-          status === 'success' ||
-          status === 'true' ||
-          resData.status === true;
+          const isSuccess =
+            status === 'completed' ||
+            status === 'paid' ||
+            status === 'success' ||
+            status === 'true' ||
+            resData.status === true;
 
-        return { isValid: isSuccess, data: dataObj };
+          return { isValid: isSuccess, data: dataObj };
+        }
+      } catch (err: any) {
+        this.logger.warn(`PipraPay verify probe to ${endpoint} failed: ${err.message}`);
       }
-    } catch (err: any) {
-      this.logger.warn(`PipraPay server verification request failed: ${err.message}`);
     }
 
     return { isValid: true };
@@ -400,39 +425,42 @@ export class PipraPayGatewayProvider implements IPaymentGateway {
     const refundId = `pp_ref_${crypto.randomBytes(8).toString('hex')}`;
 
     if (!config.sandboxMode && config.apiKey && !config.apiKey.startsWith('mock_')) {
-      const refundUrlEndpoint = this.resolveUrl(
-        config.apiUrl,
-        config.refundEndpoint || '/refund-payment',
-        '/refund-payment',
-      );
+      const cleanBase = (config.apiUrl || 'https://pay.huipper.com/api').trim().replace(/\/+$/, '');
+      const refundEndpoints = [
+        this.resolveUrl(config.apiUrl, config.refundEndpoint || '/refund-pa', '/refund-pa'),
+        `${cleanBase}/refund-pa`,
+        `${cleanBase}/refund-payment`,
+      ].filter((v, i, a) => a.indexOf(v) === i);
 
-      try {
-        const response = await fetch(refundUrlEndpoint, {
-          method: 'POST',
-          headers: this.buildHeaders(config),
-          body: JSON.stringify({
-            pp_id: transaction.externalTransactionId || transaction.transactionId,
-            payment_id: transaction.externalTransactionId || transaction.transactionId,
-            amount: amount.toString(),
-            currency: transaction.currency || 'USD',
-            reason,
-          }),
-        });
+      for (const endpoint of refundEndpoints) {
+        try {
+          const response = await fetch(endpoint, {
+            method: 'POST',
+            headers: this.buildHeaders(config),
+            body: JSON.stringify({
+              pp_id: transaction.externalTransactionId || transaction.transactionId,
+              payment_id: transaction.externalTransactionId || transaction.transactionId,
+              amount: amount.toString(),
+              currency: transaction.currency || 'USD',
+              reason,
+            }),
+          });
 
-        if (response.ok) {
-          const resData = await response.json();
-          return {
-            success: true,
-            refundId: resData.refund_id || refundId,
-            externalRefundId: resData.id || resData.refund_id || resData.pp_id || refundId,
-            amount,
-            currency: transaction.currency || 'USD',
-            status: 'succeeded',
-            rawResponse: resData,
-          };
+          if (response.ok) {
+            const resData = await response.json();
+            return {
+              success: true,
+              refundId: resData.refund_id || refundId,
+              externalRefundId: resData.id || resData.refund_id || resData.pp_id || refundId,
+              amount,
+              currency: transaction.currency || 'USD',
+              status: 'succeeded',
+              rawResponse: resData,
+            };
+          }
+        } catch (err: any) {
+          this.logger.warn(`PipraPay refund request to ${endpoint} failed: ${err.message}`);
         }
-      } catch (err: any) {
-        this.logger.warn(`PipraPay live refund request failed, recording internal refund: ${err.message}`);
       }
     }
 
