@@ -1,7 +1,15 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, Header } from '@nestjs/common';
+import { getApiDocsTemplate } from './api-docs.template';
 
 @Controller('public/docs')
 export class DocsController {
+  @Get()
+  @Header('Content-Type', 'text/html')
+  getApiUi() {
+    const spec = this.getApiSpec();
+    return getApiDocsTemplate(spec, '/api/v1');
+  }
+
   @Get('spec')
   getApiSpec() {
     return {

@@ -28,6 +28,7 @@ export class SeederService implements OnApplicationBootstrap {
 
   async onApplicationBootstrap() {
     await this.seedSuperAdmin();
+    await this.seedDemoCustomer();
     await this.seedDefaultLicensePlans();
     await this.seedSampleProduct();
   }
@@ -51,6 +52,29 @@ export class SeederService implements OnApplicationBootstrap {
 
       this.logger.log(
         `✅ Initial Super Admin seeded: ${adminEmail} / ${adminPassword}`,
+      );
+    }
+  }
+
+  private async seedDemoCustomer() {
+    const customerEmail = 'customer@example.com';
+    const customerPassword = 'Customer123456!';
+
+    const existing = await this.userModel.findOne({ email: customerEmail.toLowerCase() });
+    if (!existing) {
+      const salt = await bcrypt.genSalt(10);
+      const passwordHash = await bcrypt.hash(customerPassword, salt);
+
+      await this.userModel.create({
+        email: customerEmail.toLowerCase(),
+        fullName: 'Demo Customer',
+        passwordHash,
+        role: UserRole.CUSTOMER,
+        isActive: true,
+      });
+
+      this.logger.log(
+        `✅ Initial Demo Customer seeded: ${customerEmail} / ${customerPassword}`,
       );
     }
   }

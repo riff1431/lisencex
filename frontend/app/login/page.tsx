@@ -1,19 +1,21 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, Suspense } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
-import { Key, ShieldCheck, ArrowRight, Sparkles, AlertCircle } from 'lucide-react';
+import { Key, ShieldCheck, User, Sparkles, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
-export default function LoginPage() {
+function LoginForm() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const callbackUrl = searchParams.get('callbackUrl');
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -23,10 +25,13 @@ export default function LoginPage() {
     try {
       await login(email, password);
       const savedUser = JSON.parse(localStorage.getItem('auth_user') || '{}');
-      if (savedUser.role === 'super_admin' || savedUser.role === 'admin') {
+      
+      if (callbackUrl) {
+        router.push(callbackUrl);
+      } else if (savedUser.role === 'super_admin' || savedUser.role === 'admin') {
         router.push('/admin');
       } else {
-        router.push('/customer');
+        router.push('/dashboard');
       }
     } catch (err: any) {
       setError(err.message || 'Failed to sign in. Please check your credentials.');
@@ -38,6 +43,11 @@ export default function LoginPage() {
   const fillAdmin = () => {
     setEmail('admin@example.com');
     setPassword('Admin123456!');
+  };
+
+  const fillCustomer = () => {
+    setEmail('customer@example.com');
+    setPassword('Customer123456!');
   };
 
   return (
@@ -99,16 +109,29 @@ export default function LoginPage() {
             </Button>
           </form>
 
-          {/* 1-Click Fill Box */}
-          <div className="pt-4 border-t border-border/60">
-            <button
-              type="button"
-              onClick={fillAdmin}
-              className="w-full p-2.5 rounded-xl border border-dashed border-indigo-500/40 bg-indigo-500/5 hover:bg-indigo-500/10 text-xs font-semibold text-indigo-500 flex items-center justify-center gap-2 transition-colors"
-            >
-              <Sparkles className="h-4 w-4" />
-              <span>Click to auto-fill Super Admin credentials</span>
-            </button>
+          {/* Quick Demo Accounts */}
+          <div className="pt-4 border-t border-border/60 space-y-2">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground text-center">
+              Quick 1-Click Demo Login
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={fillAdmin}
+                className="p-2.5 rounded-xl border border-dashed border-indigo-500/40 bg-indigo-500/5 hover:bg-indigo-500/10 text-xs font-semibold text-indigo-500 flex items-center justify-center gap-1.5 transition-colors"
+              >
+                <ShieldCheck className="h-3.5 w-3.5" />
+                <span>Super Admin</span>
+              </button>
+              <button
+                type="button"
+                onClick={fillCustomer}
+                className="p-2.5 rounded-xl border border-dashed border-emerald-500/40 bg-emerald-500/5 hover:bg-emerald-500/10 text-xs font-semibold text-emerald-500 flex items-center justify-center gap-1.5 transition-colors"
+              >
+                <User className="h-3.5 w-3.5" />
+                <span>Customer</span>
+              </button>
+            </div>
           </div>
 
           <div className="text-center text-xs text-muted-foreground pt-2">
@@ -120,5 +143,13 @@ export default function LoginPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div className="flex-1 flex items-center justify-center">Loading...</div>}>
+      <LoginForm />
+    </Suspense>
   );
 }
