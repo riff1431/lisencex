@@ -9,6 +9,7 @@ import {
 import { Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { ErrorCode } from '../enums/error-code.enum';
+import { getApiResponseViewerTemplate } from '../templates/api-response-viewer.template';
 
 @Catch()
 export class AllExceptionsFilter implements ExceptionFilter {
@@ -54,14 +55,37 @@ export class AllExceptionsFilter implements ExceptionFilter {
       );
     }
 
-    response.status(status).json({
+    const errorPayload = {
       success: false,
       code,
       message,
       details,
       requestId,
       timestamp: new Date().toISOString(),
-    });
+    };
+
+    const acceptHeader = request.headers['accept'] || '';
+    const isBrowser = acceptHeader.includes('text/html');
+
+    if (isBrowser) {
+      const clientIp = request.ip || request.connection?.remoteAddress || '127.0.0.1';
+      response.setHeader('Content-Type', 'text/html');
+      
+      const html = getApiResponseViewerTemplate(
+        request.url,
+        request.method,
+        status,
+        errorPayload,
+        0, // Latency is 0 for immediate exceptions
+        clientIp,
+        request.headers,
+      );
+      
+      response.status(status).send(html);
+      return;
+    }
+
+    response.status(status).json(errorPayload);
   }
 
   private mapStatusToErrorCode(status: number): string {

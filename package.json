@@ -1,0 +1,12 @@
+{
+  "name": "licensenest-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "pnpm --filter lisence_backend build && pnpm --filter frontend build",
+    "build:backend": "pnpm --filter lisence_backend build",
+    "build:frontend": "pnpm --filter frontend build",
+    "start:backend": "pnpm --filter lisence_backend start:prod",
+    "start:frontend": "pnpm --filter frontend start"
+  }
+}
