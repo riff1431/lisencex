@@ -30,6 +30,7 @@ import {
   LifeBuoy,
   FolderTree,
   MessageSquare,
+  Database,
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 
@@ -55,6 +56,7 @@ const adminLinks = [
   { href: '/admin/integration', label: 'Developer Integration', icon: Zap },
   { href: '/admin/developers', label: 'API Credentials', icon: Code2 },
   { href: '/admin/audit', label: 'Audit Logs Stream', icon: ScrollText },
+  { href: '/admin/settings/storage', label: 'Storage & Media', icon: Database },
   { href: '/admin/settings', label: 'System Settings', icon: Settings },
 ];
 

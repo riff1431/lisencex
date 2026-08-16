@@ -7,10 +7,11 @@ import {
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { extname, join } from 'path';
-import { existsSync, mkdirSync, writeFileSync, unlinkSync, statSync } from 'fs';
-import * as crypto from 'crypto';
+import { existsSync, mkdirSync } from 'fs';
 import { Product, ProductDocument } from '../../database/schemas/product.schema';
 import { AuditLog, AuditLogDocument } from '../../database/schemas/audit-log.schema';
+import { StorageService } from '../storage/storage.service';
+import { FileCategory, FileVisibility } from '../../database/schemas/stored-file.schema';
 
 export interface UploadedMediaResult {
   url: string;
@@ -22,6 +23,8 @@ export interface UploadedMediaResult {
   height?: number;
   mediaType: string;
   uploadedAt: Date;
+  fileId?: string;
+  storageProvider?: string;
 }
 
 import { IsOptional, IsString, IsArray } from 'class-validator';
@@ -69,8 +72,8 @@ export class MediaService {
   constructor(
     @InjectModel(Product.name) private productModel: Model<ProductDocument>,
     @InjectModel(AuditLog.name) private auditLogModel: Model<AuditLogDocument>,
+    private readonly storageService: StorageService,
   ) {
-    // Ensure media uploads directory exists
     if (!existsSync(this.uploadDir)) {
       mkdirSync(this.uploadDir, { recursive: true });
     }
@@ -80,8 +83,27 @@ export class MediaService {
     return this.uploadDir;
   }
 
+  private mapMediaTypeToCategory(mediaType: string): FileCategory {
+    switch (mediaType?.toLowerCase()) {
+      case 'thumbnail':
+        return FileCategory.THUMBNAIL;
+      case 'icon':
+        return FileCategory.ICON;
+      case 'banner':
+        return FileCategory.BANNER;
+      case 'screenshot':
+        return FileCategory.SCREENSHOT;
+      case 'document':
+        return FileCategory.DOCUMENT;
+      case 'support':
+        return FileCategory.SUPPORT;
+      default:
+        return FileCategory.GENERAL;
+    }
+  }
+
   /**
-   * 1. Validate & Save Uploaded Image File
+   * 1. Validate & Save Uploaded Image File via Storage Provider
    */
   async processAndSaveImage(
     file: Express.Multer.File,
@@ -110,25 +132,29 @@ export class MediaService {
       );
     }
 
-    // Size limit check: 10 MB for banner/screenshot, 5 MB for others
-    const maxSizeBytes = 10 * 1024 * 1024;
+    const maxSizeBytes = 15 * 1024 * 1024;
     if (file.size > maxSizeBytes) {
-      throw new BadRequestException(`Image file exceeds 10MB limit (size: ${(file.size / 1024 / 1024).toFixed(2)}MB)`);
+      throw new BadRequestException(
+        `Image file exceeds 15MB limit (size: ${(file.size / 1024 / 1024).toFixed(2)}MB)`,
+      );
     }
 
-    // Generate unique sanitized filename
-    const hash = crypto.randomBytes(8).toString('hex');
-    const sanitizedBase = file.originalname
-      .replace(/[^a-zA-Z0-9.-]/g, '_')
-      .replace(/\.[^/.]+$/, '')
-      .slice(0, 32);
-    const fileName = `${mediaType}_${Date.now()}_${hash}_${sanitizedBase}${fileExt}`;
-    const filePath = join(this.uploadDir, fileName);
+    const category = this.mapMediaTypeToCategory(mediaType);
 
-    // Write file to disk
-    writeFileSync(filePath, file.buffer);
+    // Upload through unified dynamic StorageService
+    const storedFile = await this.storageService.uploadFile(
+      {
+        buffer: file.buffer,
+        originalname: file.originalname,
+        mimetype: file.mimetype,
+        size: file.size,
+      },
+      category,
+      FileVisibility.PUBLIC,
+      actorEmail,
+    );
 
-    // Approximate SVG or dimensions metadata (default reasonable bounds if not decoded)
+    // Approximate dimensions metadata based on type
     let width = 1200;
     let height = 675;
     if (mediaType === 'icon' || mediaType === 'logo') {
@@ -142,33 +168,19 @@ export class MediaService {
       height = 500;
     }
 
-    const publicUrl = `/api/v1/public/media/${fileName}`;
-
     const result: UploadedMediaResult = {
-      url: publicUrl,
-      fileName,
-      originalName: file.originalname,
-      mimeType: file.mimetype,
-      sizeBytes: file.size,
+      url: storedFile.publicUrl || `/api/v1/public/storage/serve/${storedFile.fileId}`,
+      fileName: storedFile.generatedFilename,
+      originalName: storedFile.originalFilename,
+      mimeType: storedFile.mimeType,
+      sizeBytes: storedFile.sizeBytes,
       width,
       height,
       mediaType,
-      uploadedAt: new Date(),
+      uploadedAt: (storedFile as any).createdAt || new Date(),
+      fileId: storedFile.fileId,
+      storageProvider: storedFile.storageProvider,
     };
-
-    // Audit log
-    await this.auditLogModel.create({
-      actorEmail,
-      action: 'PRODUCT_MEDIA_UPLOADED',
-      targetType: 'media',
-      targetId: fileName,
-      after: {
-        fileName,
-        mediaType,
-        sizeBytes: file.size,
-        mimeType: file.mimetype,
-      },
-    });
 
     return result;
   }
@@ -181,7 +193,10 @@ export class MediaService {
     dto: UpdateProductMediaDto,
     actorEmail: string,
   ): Promise<ProductDocument> {
-    const product = await this.productModel.findById(productId);
+    const product = await this.productModel.findById(
+      Types.ObjectId.isValid(productId) ? new Types.ObjectId(productId) : null,
+    );
+
     if (!product) {
       throw new NotFoundException('Product not found');
     }
@@ -191,8 +206,7 @@ export class MediaService {
       iconUrl: product.iconUrl,
       logoUrl: product.logoUrl,
       bannerUrl: product.bannerUrl,
-      screenshots: product.screenshots,
-      mediaGallery: product.mediaGallery,
+      screenshotsCount: product.screenshots?.length || 0,
     };
 
     if (dto.thumbnailUrl !== undefined) product.thumbnailUrl = dto.thumbnailUrl;
@@ -234,23 +248,7 @@ export class MediaService {
    * 3. Delete Media File
    */
   async deleteMediaFile(fileName: string, actorEmail: string): Promise<{ deleted: boolean }> {
-    // Sanitize fileName to prevent directory traversal
-    const safeName = fileName.replace(/[^a-zA-Z0-9_.-]/g, '');
-    const filePath = join(this.uploadDir, safeName);
-
-    if (existsSync(filePath)) {
-      unlinkSync(filePath);
-
-      await this.auditLogModel.create({
-        actorEmail,
-        action: 'PRODUCT_MEDIA_DELETED',
-        targetType: 'media',
-        targetId: safeName,
-      });
-
-      return { deleted: true };
-    }
-
-    return { deleted: false };
+    const deleted = await this.storageService.deleteStoredFile(fileName, actorEmail);
+    return { deleted };
   }
 }

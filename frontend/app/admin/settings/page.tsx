@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Settings, Save, CheckCircle2, Globe2, ShieldCheck, Key, Sliders, RefreshCw, Zap } from 'lucide-react';
+import Link from 'next/link';
+import { Settings, Save, CheckCircle2, Globe2, ShieldCheck, Key, Sliders, RefreshCw, Zap, Database, ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { apiRequest } from '@/lib/api';
 
@@ -61,11 +62,22 @@ export default function AdminSettingsPage() {
 
   return (
     <div className="space-y-6 max-w-4xl">
-      <div>
-        <h1 className="text-2xl sm:text-3xl font-black tracking-tight">System & Platform Settings</h1>
-        <p className="text-sm text-muted-foreground mt-0.5">
-          Configure default validation intervals, offline grace periods, security limits, and marketplace API connections
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl sm:text-3xl font-black tracking-tight">System & Platform Settings</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            Configure default validation intervals, offline grace periods, security limits, and marketplace API connections
+          </p>
+        </div>
+
+        <Link
+          href="/admin/settings/storage"
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-2xl bg-indigo-500/10 hover:bg-indigo-500/15 border border-indigo-500/20 text-indigo-500 font-semibold text-xs transition-colors shrink-0"
+        >
+          <Database className="h-4 w-4" />
+          <span>Storage & Providers</span>
+          <ArrowRight className="h-3.5 w-3.5" />
+        </Link>
       </div>
 
       {success && (

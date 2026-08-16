@@ -24,4 +24,5 @@ export * from './ticket.schema';
 export * from './category.schema';
 export * from './tag.schema';
 export * from './review.schema';
-
+export * from './storage-config.schema';
+export * from './stored-file.schema';
