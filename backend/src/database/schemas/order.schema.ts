@@ -30,6 +30,7 @@ export enum PaymentMethod {
   MANUAL = 'manual',
   RAZORPAY = 'razorpay',
   CRYPTO = 'crypto',
+  PIPRAPAY = 'piprapay',
   FREE = 'free',
 }
 

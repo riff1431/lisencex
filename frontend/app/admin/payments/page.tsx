@@ -40,6 +40,7 @@ const GATEWAY_ICONS: Record<string, any> = {
   stripe: CreditCard,
   paypal: CreditCard,
   manual: Building2,
+  piprapay: Zap,
 };
 
 export default function AdminPaymentsPage() {
@@ -249,6 +250,7 @@ export default function AdminPaymentsPage() {
           >
             <option value="all">All Gateways</option>
             <option value="simulator">Simulator</option>
+            <option value="piprapay">PipraPay</option>
             <option value="stripe">Stripe</option>
             <option value="paypal">PayPal</option>
             <option value="manual">Manual Wire</option>

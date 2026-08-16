@@ -2,10 +2,11 @@ import {
   Controller,
   Get,
   Patch,
+  Post,
   Body,
   UseGuards,
 } from '@nestjs/common';
-import { SettingsService } from './settings.service';
+import { SettingsService, PipraPayConfig } from './settings.service';
 import { UpdateSettingDto } from './dto/settings.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -30,5 +31,20 @@ export class SettingsController {
       dto.value,
       dto.description,
     );
+  }
+
+  @Get('piprapay')
+  async getPipraPayConfig() {
+    return this.settingsService.getPipraPayConfig(true);
+  }
+
+  @Patch('piprapay')
+  async updatePipraPayConfig(@Body() dto: Partial<PipraPayConfig>) {
+    return this.settingsService.updatePipraPayConfig(dto);
+  }
+
+  @Post('piprapay/test')
+  async testPipraPayConnection(@Body() dto: Partial<PipraPayConfig>) {
+    return this.settingsService.testPipraPayConnection(dto);
   }
 }

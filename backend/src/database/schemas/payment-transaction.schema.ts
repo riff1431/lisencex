@@ -10,6 +10,7 @@ export enum PaymentGatewayType {
   MANUAL = 'manual',
   RAZORPAY = 'razorpay',
   CRYPTO = 'crypto',
+  PIPRAPAY = 'piprapay',
 }
 
 export enum TransactionStatus {

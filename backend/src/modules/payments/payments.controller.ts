@@ -36,8 +36,8 @@ export class PaymentsController {
 
   // ---------------- PUBLIC ROUTES ----------------
   @Get('public/payments/gateways')
-  getSupportedGateways() {
-    return this.gatewayRegistry.getSupportedGateways();
+  async getSupportedGateways() {
+    return this.gatewayRegistry.getSupportedGatewaysAsync();
   }
 
   @Post('public/payments/webhook/:gateway')
@@ -48,10 +48,11 @@ export class PaymentsController {
     @Headers('stripe-signature') stripeSig: string,
     @Headers('paypal-transmission-sig') paypalSig: string,
     @Headers('x-simulator-signature') simSig: string,
+    @Headers('x-piprapay-signature') pipraSig: string,
     @Headers() allHeaders: Record<string, string>,
     @Req() req: Request,
   ) {
-    const signature = stripeSig || paypalSig || simSig || (allHeaders['x-signature'] as string) || '';
+    const signature = stripeSig || paypalSig || simSig || pipraSig || (allHeaders['x-signature'] as string) || '';
     const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0] || req.socket.remoteAddress || '';
     const userAgent = req.headers['user-agent'] || '';
 

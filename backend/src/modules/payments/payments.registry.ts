@@ -4,7 +4,9 @@ import { SimulatorGatewayProvider } from './providers/simulator.provider';
 import { StripeGatewayProvider } from './providers/stripe.provider';
 import { PayPalGatewayProvider } from './providers/paypal.provider';
 import { ManualGatewayProvider } from './providers/manual.provider';
+import { PipraPayGatewayProvider } from './providers/piprapay.provider';
 import { PaymentGatewayType } from '../../database/schemas/payment-transaction.schema';
+import { SettingsService } from '../settings/settings.service';
 
 @Injectable()
 export class PaymentGatewayRegistry {
@@ -15,11 +17,14 @@ export class PaymentGatewayRegistry {
     private stripeProvider: StripeGatewayProvider,
     private paypalProvider: PayPalGatewayProvider,
     private manualProvider: ManualGatewayProvider,
+    private pipraPayProvider: PipraPayGatewayProvider,
+    private settingsService: SettingsService,
   ) {
     this.register(simulatorProvider);
     this.register(stripeProvider);
     this.register(paypalProvider);
     this.register(manualProvider);
+    this.register(pipraPayProvider);
   }
 
   register(provider: IPaymentGateway) {
@@ -35,12 +40,35 @@ export class PaymentGatewayRegistry {
     return provider;
   }
 
-  getSupportedGateways(): Array<{ name: string; label: string; isTestMode?: boolean }> {
+  async getSupportedGatewaysAsync(): Promise<Array<{ name: string; label: string; isTestMode?: boolean; enabled?: boolean; description?: string }>> {
+    const pipraConfig = await this.settingsService.getPipraPayConfig(true);
+    const list: Array<{ name: string; label: string; isTestMode?: boolean; enabled?: boolean; description?: string }> = [
+      { name: 'simulator', label: 'Instant Simulator (Test Cards)', isTestMode: true, enabled: true },
+      { name: 'stripe', label: 'Credit / Debit Card (Stripe)', enabled: true },
+      { name: 'paypal', label: 'PayPal', enabled: true },
+      { name: 'manual', label: 'Bank Wire / Offline Transfer', enabled: true },
+    ];
+
+    if (pipraConfig.enabled) {
+      list.push({
+        name: 'piprapay',
+        label: pipraConfig.title || 'PipraPay (Cards & Mobile Wallets)',
+        isTestMode: pipraConfig.sandboxMode,
+        enabled: pipraConfig.enabled,
+        description: pipraConfig.description,
+      });
+    }
+
+    return list;
+  }
+
+  getSupportedGateways(): Array<{ name: string; label: string; isTestMode?: boolean; enabled?: boolean }> {
     return [
-      { name: 'simulator', label: 'Instant Simulator (Test Cards)', isTestMode: true },
-      { name: 'stripe', label: 'Credit / Debit Card (Stripe)' },
-      { name: 'paypal', label: 'PayPal' },
-      { name: 'manual', label: 'Bank Wire / Offline Transfer' },
+      { name: 'simulator', label: 'Instant Simulator (Test Cards)', isTestMode: true, enabled: true },
+      { name: 'stripe', label: 'Credit / Debit Card (Stripe)', enabled: true },
+      { name: 'paypal', label: 'PayPal', enabled: true },
+      { name: 'manual', label: 'Bank Wire / Offline Transfer', enabled: true },
+      { name: 'piprapay', label: 'PipraPay (Cards & Mobile Wallets)', isTestMode: true, enabled: true },
     ];
   }
 }

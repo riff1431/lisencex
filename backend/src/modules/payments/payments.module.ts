@@ -35,9 +35,11 @@ import { SimulatorGatewayProvider } from './providers/simulator.provider';
 import { StripeGatewayProvider } from './providers/stripe.provider';
 import { PayPalGatewayProvider } from './providers/paypal.provider';
 import { ManualGatewayProvider } from './providers/manual.provider';
+import { PipraPayGatewayProvider } from './providers/piprapay.provider';
 import { OrdersModule } from '../orders/orders.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { CouponsModule } from '../coupons/coupons.module';
+import { SettingsModule } from '../settings/settings.module';
 
 @Module({
   imports: [
@@ -53,6 +55,7 @@ import { CouponsModule } from '../coupons/coupons.module';
     OrdersModule,
     NotificationsModule,
     forwardRef(() => CouponsModule),
+    SettingsModule,
   ],
   controllers: [PaymentsController],
   providers: [
@@ -62,6 +65,7 @@ import { CouponsModule } from '../coupons/coupons.module';
     StripeGatewayProvider,
     PayPalGatewayProvider,
     ManualGatewayProvider,
+    PipraPayGatewayProvider,
   ],
   exports: [PaymentsService, PaymentGatewayRegistry],
 })

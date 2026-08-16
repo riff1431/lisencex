@@ -70,14 +70,25 @@ export default function AdminSettingsPage() {
           </p>
         </div>
 
-        <Link
-          href="/admin/settings/storage"
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-2xl bg-indigo-500/10 hover:bg-indigo-500/15 border border-indigo-500/20 text-indigo-500 font-semibold text-xs transition-colors shrink-0"
-        >
-          <Database className="h-4 w-4" />
-          <span>Storage & Providers</span>
-          <ArrowRight className="h-3.5 w-3.5" />
-        </Link>
+        <div className="flex items-center gap-2.5 shrink-0 flex-wrap">
+          <Link
+            href="/admin/settings/piprapay"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-2xl bg-emerald-500/10 hover:bg-emerald-500/15 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 font-semibold text-xs transition-colors shrink-0"
+          >
+            <Zap className="h-4 w-4 fill-current text-emerald-500" />
+            <span>PipraPay Gateway</span>
+            <ArrowRight className="h-3.5 w-3.5" />
+          </Link>
+
+          <Link
+            href="/admin/settings/storage"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-2xl bg-indigo-500/10 hover:bg-indigo-500/15 border border-indigo-500/20 text-indigo-500 font-semibold text-xs transition-colors shrink-0"
+          >
+            <Database className="h-4 w-4" />
+            <span>Storage & Providers</span>
+            <ArrowRight className="h-3.5 w-3.5" />
+          </Link>
+        </div>
       </div>
 
       {success && (

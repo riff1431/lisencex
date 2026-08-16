@@ -33,7 +33,7 @@ export default function CheckoutPage() {
   const { user } = useAuth();
   const { items, cartTotal, clearCart } = useCart();
 
-  const [paymentMethod, setPaymentMethod] = useState<'simulator' | 'stripe' | 'paypal' | 'manual'>('simulator');
+  const [paymentMethod, setPaymentMethod] = useState<'simulator' | 'stripe' | 'paypal' | 'manual' | 'piprapay'>('simulator');
   const [processing, setProcessing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [completedOrder, setCompletedOrder] = useState<any>(null);
@@ -459,6 +459,37 @@ export default function CheckoutPage() {
                   {paymentMethod === 'paypal' && <CheckCircle2 className="h-4 w-4 text-indigo-500" />}
                 </div>
                 <span className="text-[10px] font-semibold text-muted-foreground">Buyer Protection</span>
+              </div>
+
+              {/* PipraPay Payment Gateway */}
+              <div
+                onClick={() => setPaymentMethod('piprapay')}
+                className={`p-4 rounded-2xl border cursor-pointer transition-all flex flex-col justify-between gap-3 ${
+                  paymentMethod === 'piprapay'
+                    ? 'border-emerald-500 bg-emerald-500/5 ring-1 ring-emerald-500'
+                    : 'border-border bg-secondary/30 hover:border-border/80'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <div className="h-8 w-8 rounded-xl bg-gradient-to-tr from-emerald-500/20 to-teal-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-black text-xs">
+                      <Zap className="h-4 w-4 fill-current" />
+                    </div>
+                    <div>
+                      <div className="font-bold text-xs text-foreground flex items-center gap-1.5">
+                        PipraPay
+                        <span className="text-[9px] font-mono px-1.5 py-0.2 rounded-full bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 font-bold">
+                          Global
+                        </span>
+                      </div>
+                      <div className="text-[10px] text-muted-foreground">Cards, bKash, Nagad, Wallets</div>
+                    </div>
+                  </div>
+                  {paymentMethod === 'piprapay' && <CheckCircle2 className="h-4 w-4 text-emerald-500" />}
+                </div>
+                <span className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">
+                  Instant Multi-Currency Checkout
+                </span>
               </div>
 
               {/* Manual Bank Wire */}
