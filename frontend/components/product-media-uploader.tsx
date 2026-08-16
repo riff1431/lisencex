@@ -15,9 +15,10 @@ import {
   Sparkles,
   Eye,
   RefreshCw,
+  FolderOpen,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { apiRequest } from '@/lib/api';
+import { MediaPicker } from '@/components/media-picker';
 
 export interface ProductMediaState {
   thumbnailUrl?: string;
@@ -52,6 +53,7 @@ export function ProductMediaUploader({
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [directUrlInput, setDirectUrlInput] = useState('');
   const [isUrlInputMode, setIsUrlInputMode] = useState(false);
+  const [mediaPickerOpen, setMediaPickerOpen] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -70,10 +72,10 @@ export function ProductMediaUploader({
     try {
       const formData = new FormData();
       formData.append('file', file);
-      formData.append('mediaType', mediaType);
+      formData.append('folder', mediaType);
 
       // Upload to API
-      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+      const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') || localStorage.getItem('token') : null;
       const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api/v1';
 
       const res = await fetch(`${baseUrl}/admin/media/upload`, {
@@ -89,15 +91,15 @@ export function ProductMediaUploader({
         throw new Error(json.message || 'Upload failed');
       }
 
-      const uploadedUrl = json.data?.url || json.url;
+      const uploadedUrl = json.data?.publicUrl || json.data?.url || json.url;
 
-      if (mediaType === 'thumbnail') {
+      if (mediaType === 'thumbnail' || mediaType === 'thumbnails') {
         updateMedia({ thumbnailUrl: uploadedUrl });
-      } else if (mediaType === 'icon') {
+      } else if (mediaType === 'icon' || mediaType === 'icons') {
         updateMedia({ iconUrl: uploadedUrl, logoUrl: uploadedUrl });
-      } else if (mediaType === 'banner') {
+      } else if (mediaType === 'banner' || mediaType === 'banners') {
         updateMedia({ bannerUrl: uploadedUrl });
-      } else if (mediaType === 'screenshot') {
+      } else if (mediaType === 'screenshot' || mediaType === 'screenshots') {
         const currentScreenshots = [...(media.screenshots || [])];
         updateMedia({ screenshots: [...currentScreenshots, uploadedUrl] });
       }
@@ -108,6 +110,22 @@ export function ProductMediaUploader({
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
+    }
+  };
+
+  const handleMediaPickerSelect = (selected: { url: string; title: string }[]) => {
+    if (!selected || selected.length === 0) return;
+
+    if (activeTab === 'thumbnail') {
+      updateMedia({ thumbnailUrl: selected[0].url });
+    } else if (activeTab === 'icon') {
+      updateMedia({ iconUrl: selected[0].url, logoUrl: selected[0].url });
+    } else if (activeTab === 'banner') {
+      updateMedia({ bannerUrl: selected[0].url });
+    } else if (activeTab === 'screenshots') {
+      const current = [...(media.screenshots || [])];
+      const newUrls = selected.map((s) => s.url);
+      updateMedia({ screenshots: [...current, ...newUrls] });
     }
   };
 
@@ -247,43 +265,83 @@ export function ProductMediaUploader({
         onChange={(e) => {
           const file = e.target.files?.[0];
           if (file) {
-            const type = activeTab === 'screenshots' ? 'screenshot' : activeTab;
+            const type = activeTab === 'screenshots' ? 'screenshots' : activeTab;
             handleFileUpload(file, type);
           }
         }}
       />
 
+      {/* Reusable Media Library Picker Modal */}
+      <MediaPicker
+        open={mediaPickerOpen}
+        onClose={() => setMediaPickerOpen(false)}
+        onSelect={handleMediaPickerSelect}
+        multiple={activeTab === 'screenshots'}
+        folder={activeTab === 'screenshots' ? 'screenshots' : activeTab}
+        title={`Select ${activeTab.toUpperCase()} from Media Library`}
+      />
+
+      {/* Action Switcher Bar */}
+      <div className="flex flex-wrap items-center justify-between gap-2 pt-1 text-xs">
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setMediaPickerOpen(true)}
+            className="gap-1.5 text-xs font-semibold"
+          >
+            <FolderOpen className="h-3.5 w-3.5 text-indigo-500" />
+            <span>Select from Media Library</span>
+          </Button>
+
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
+            className="gap-1.5 text-xs font-semibold"
+          >
+            <Upload className="h-3.5 w-3.5" />
+            <span>{uploading ? 'Uploading...' : 'Upload New File'}</span>
+          </Button>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setIsUrlInputMode(!isUrlInputMode)}
+          className="font-bold text-indigo-500 hover:underline flex items-center gap-1"
+        >
+          <Link2 className="h-3 w-3" />
+          <span>{isUrlInputMode ? 'Hide URL Input' : 'Paste Direct Image URL'}</span>
+        </button>
+      </div>
+
+      {isUrlInputMode && (
+        <div className="flex gap-2 pt-1">
+          <input
+            type="text"
+            placeholder="https://cdn.example.com/asset.png"
+            value={directUrlInput}
+            onChange={(e) => setDirectUrlInput(e.target.value)}
+            className="flex-1 h-9 px-3 rounded-xl border border-border bg-secondary/40 text-xs font-medium text-foreground focus:outline-none"
+          />
+          <Button
+            size="sm"
+            type="button"
+            onClick={handleDirectUrlSave}
+            className="rounded-xl font-bold bg-indigo-600 hover:bg-indigo-700 text-white text-xs h-9"
+          >
+            Apply URL
+          </Button>
+        </div>
+      )}
+
       {/* TAB 1: THUMBNAIL */}
       {activeTab === 'thumbnail' && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between text-xs">
-            <span className="text-muted-foreground">
-              Marketplace listing card thumbnail (Recommended: 800 × 500 px, PNG or WEBP)
-            </span>
-            <button
-              type="button"
-              onClick={() => setIsUrlInputMode(!isUrlInputMode)}
-              className="font-bold text-indigo-500 hover:underline flex items-center gap-1"
-            >
-              <Link2 className="h-3 w-3" />
-              <span>{isUrlInputMode ? 'Upload from Computer' : 'Paste Image URL'}</span>
-            </button>
-          </div>
-
-          {isUrlInputMode ? (
-            <div className="flex gap-2">
-              <input
-                type="text"
-                placeholder="https://cdn.example.com/thumbnail.png"
-                value={directUrlInput}
-                onChange={(e) => setDirectUrlInput(e.target.value)}
-                className="flex-1 h-9 px-3 rounded-xl border border-border bg-secondary/40 text-xs font-medium text-foreground focus:outline-none"
-              />
-              <Button size="sm" type="button" onClick={handleDirectUrlSave} className="rounded-xl font-bold bg-indigo-600 hover:bg-indigo-700 text-white text-xs h-9">
-                Apply URL
-              </Button>
-            </div>
-          ) : media.thumbnailUrl ? (
+        <div className="space-y-3">
+          {media.thumbnailUrl ? (
             <div className="relative rounded-2xl overflow-hidden border border-border bg-secondary/30 max-w-md group">
               <img
                 src={media.thumbnailUrl}
@@ -295,11 +353,11 @@ export function ProductMediaUploader({
                   size="sm"
                   type="button"
                   variant="outline"
-                  onClick={() => fileInputRef.current?.click()}
+                  onClick={() => setMediaPickerOpen(true)}
                   className="rounded-xl text-xs h-8 bg-card/90 text-foreground hover:bg-card border-none"
                 >
-                  <RefreshCw className="h-3.5 w-3.5 mr-1" />
-                  Replace
+                  <FolderOpen className="h-3.5 w-3.5 mr-1" />
+                  Choose from Library
                 </Button>
                 <Button
                   size="sm"
@@ -315,149 +373,61 @@ export function ProductMediaUploader({
             </div>
           ) : (
             <div
-              onClick={() => fileInputRef.current?.click()}
-              className="border-2 border-dashed border-border hover:border-indigo-500/60 rounded-3xl p-8 text-center cursor-pointer transition-colors bg-secondary/20 hover:bg-secondary/30 flex flex-col items-center justify-center gap-2"
+              onClick={() => setMediaPickerOpen(true)}
+              className="border-2 border-dashed border-border hover:border-indigo-500 rounded-2xl p-6 text-center cursor-pointer transition-all bg-secondary/20 hover:bg-secondary/40 flex flex-col items-center justify-center space-y-1"
             >
-              <div className="p-3 rounded-2xl bg-indigo-500/10 text-indigo-500 mb-1">
-                <Upload className="h-6 w-6" />
-              </div>
-              <span className="font-bold text-xs text-foreground">Click to upload product thumbnail</span>
-              <span className="text-[11px] text-muted-foreground">PNG, JPG, WEBP, SVG up to 10MB</span>
+              <ImageIcon className="h-8 w-8 text-muted-foreground/60 mb-1" />
+              <span className="font-bold text-xs text-foreground">No Thumbnail Selected</span>
+              <span className="text-[11px] text-muted-foreground">Click to choose from Media Library or upload new</span>
             </div>
           )}
         </div>
       )}
 
-      {/* TAB 2: ICON / LOGO */}
+      {/* TAB 2: ICON */}
       {activeTab === 'icon' && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between text-xs">
-            <span className="text-muted-foreground">
-              Square app icon for admin tables, licenses, and downloads (Recommended: 512 × 512 px)
-            </span>
-            <button
-              type="button"
-              onClick={() => setIsUrlInputMode(!isUrlInputMode)}
-              className="font-bold text-indigo-500 hover:underline flex items-center gap-1"
-            >
-              <Link2 className="h-3 w-3" />
-              <span>{isUrlInputMode ? 'Upload from Computer' : 'Paste Image URL'}</span>
-            </button>
-          </div>
-
-          {isUrlInputMode ? (
-            <div className="flex gap-2">
-              <input
-                type="text"
-                placeholder="https://cdn.example.com/icon.svg"
-                value={directUrlInput}
-                onChange={(e) => setDirectUrlInput(e.target.value)}
-                className="flex-1 h-9 px-3 rounded-xl border border-border bg-secondary/40 text-xs font-medium text-foreground focus:outline-none"
+        <div className="space-y-3">
+          {media.iconUrl ? (
+            <div className="relative h-24 w-24 rounded-2xl overflow-hidden border border-border bg-secondary/30 group">
+              <img
+                src={media.iconUrl}
+                alt="App Icon Preview"
+                className="w-full h-full object-cover"
               />
-              <Button size="sm" type="button" onClick={handleDirectUrlSave} className="rounded-xl font-bold bg-indigo-600 hover:bg-indigo-700 text-white text-xs h-9">
-                Apply URL
-              </Button>
-            </div>
-          ) : media.iconUrl ? (
-            <div className="flex items-center gap-4">
-              <div className="relative rounded-2xl overflow-hidden border border-border bg-secondary/30 w-24 h-24 group shrink-0">
-                <img
-                  src={media.iconUrl}
-                  alt="Product Icon Preview"
-                  className="w-full h-full object-cover"
-                />
-                <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1">
-                  <Button
-                    size="icon"
-                    type="button"
-                    variant="ghost"
-                    onClick={() => handleRemoveImage('iconUrl')}
-                    className="h-7 w-7 rounded-full text-white hover:bg-red-600"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Button
-                  size="sm"
+              <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1">
+                <button
                   type="button"
-                  variant="outline"
-                  onClick={() => fileInputRef.current?.click()}
-                  className="rounded-xl text-xs h-8 border-border"
+                  onClick={() => handleRemoveImage('iconUrl')}
+                  className="p-1.5 rounded-lg bg-destructive text-white"
+                  title="Remove Icon"
                 >
-                  <RefreshCw className="h-3.5 w-3.5 mr-1" />
-                  Replace Icon
-                </Button>
-                <div className="text-[11px] text-muted-foreground">
-                  Displays in dashboard rows, license headers, and API credentials.
-                </div>
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
               </div>
             </div>
           ) : (
             <div
-              onClick={() => fileInputRef.current?.click()}
-              className="border-2 border-dashed border-border hover:border-indigo-500/60 rounded-3xl p-6 text-center cursor-pointer transition-colors bg-secondary/20 hover:bg-secondary/30 flex flex-col items-center justify-center gap-2 max-w-sm"
+              onClick={() => setMediaPickerOpen(true)}
+              className="h-24 w-24 border-2 border-dashed border-border hover:border-indigo-500 rounded-2xl p-2 text-center cursor-pointer transition-all bg-secondary/20 hover:bg-secondary/40 flex flex-col items-center justify-center space-y-1"
             >
-              <div className="p-2.5 rounded-2xl bg-indigo-500/10 text-indigo-500 mb-1">
-                <Upload className="h-5 w-5" />
-              </div>
-              <span className="font-bold text-xs text-foreground">Upload Square Product Icon</span>
-              <span className="text-[11px] text-muted-foreground">PNG, SVG, WEBP</span>
+              <ImageIcon className="h-5 w-5 text-muted-foreground/60" />
+              <span className="text-[10px] font-bold text-foreground">Add Icon</span>
             </div>
           )}
         </div>
       )}
 
-      {/* TAB 3: BANNER / COVER */}
+      {/* TAB 3: BANNER */}
       {activeTab === 'banner' && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between text-xs">
-            <span className="text-muted-foreground">
-              Wide header cover on the product detail page (Recommended: 1920 × 800 px)
-            </span>
-            <button
-              type="button"
-              onClick={() => setIsUrlInputMode(!isUrlInputMode)}
-              className="font-bold text-indigo-500 hover:underline flex items-center gap-1"
-            >
-              <Link2 className="h-3 w-3" />
-              <span>{isUrlInputMode ? 'Upload from Computer' : 'Paste Image URL'}</span>
-            </button>
-          </div>
-
-          {isUrlInputMode ? (
-            <div className="flex gap-2">
-              <input
-                type="text"
-                placeholder="https://cdn.example.com/banner.jpg"
-                value={directUrlInput}
-                onChange={(e) => setDirectUrlInput(e.target.value)}
-                className="flex-1 h-9 px-3 rounded-xl border border-border bg-secondary/40 text-xs font-medium text-foreground focus:outline-none"
-              />
-              <Button size="sm" type="button" onClick={handleDirectUrlSave} className="rounded-xl font-bold bg-indigo-600 hover:bg-indigo-700 text-white text-xs h-9">
-                Apply URL
-              </Button>
-            </div>
-          ) : media.bannerUrl ? (
-            <div className="relative rounded-2xl overflow-hidden border border-border bg-secondary/30 w-full h-44 group">
+        <div className="space-y-3">
+          {media.bannerUrl ? (
+            <div className="relative rounded-2xl overflow-hidden border border-border bg-secondary/30 w-full group">
               <img
                 src={media.bannerUrl}
-                alt="Product Banner Preview"
-                className="w-full h-full object-cover"
+                alt="Hero Banner Preview"
+                className="w-full h-36 object-cover"
               />
               <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                <Button
-                  size="sm"
-                  type="button"
-                  variant="outline"
-                  onClick={() => fileInputRef.current?.click()}
-                  className="rounded-xl text-xs h-8 bg-card/90 text-foreground hover:bg-card border-none"
-                >
-                  <RefreshCw className="h-3.5 w-3.5 mr-1" />
-                  Replace Banner
-                </Button>
                 <Button
                   size="sm"
                   type="button"
@@ -466,124 +436,71 @@ export function ProductMediaUploader({
                   className="rounded-xl text-xs h-8"
                 >
                   <Trash2 className="h-3.5 w-3.5 mr-1" />
-                  Remove
+                  Remove Banner
                 </Button>
               </div>
             </div>
           ) : (
             <div
-              onClick={() => fileInputRef.current?.click()}
-              className="border-2 border-dashed border-border hover:border-indigo-500/60 rounded-3xl p-8 text-center cursor-pointer transition-colors bg-secondary/20 hover:bg-secondary/30 flex flex-col items-center justify-center gap-2"
+              onClick={() => setMediaPickerOpen(true)}
+              className="border-2 border-dashed border-border hover:border-indigo-500 rounded-2xl p-6 text-center cursor-pointer transition-all bg-secondary/20 hover:bg-secondary/40 flex flex-col items-center justify-center space-y-1"
             >
-              <div className="p-3 rounded-2xl bg-indigo-500/10 text-indigo-500 mb-1">
-                <Upload className="h-6 w-6" />
-              </div>
-              <span className="font-bold text-xs text-foreground">Upload Full-Width Product Banner</span>
-              <span className="text-[11px] text-muted-foreground">PNG, JPG, WEBP up to 10MB</span>
+              <ImageIcon className="h-8 w-8 text-muted-foreground/60 mb-1" />
+              <span className="font-bold text-xs text-foreground">No Banner Selected</span>
+              <span className="text-[11px] text-muted-foreground">Click to select 1920 × 800 px banner</span>
             </div>
           )}
         </div>
       )}
 
-      {/* TAB 4: SCREENSHOTS GALLERY */}
+      {/* TAB 4: SCREENSHOTS */}
       {activeTab === 'screenshots' && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between text-xs">
-            <span className="text-muted-foreground">
-              Product screenshot previews and gallery carousel slides.
-            </span>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setIsUrlInputMode(!isUrlInputMode)}
-                className="font-bold text-indigo-500 hover:underline flex items-center gap-1"
-              >
-                <Link2 className="h-3 w-3" />
-                <span>{isUrlInputMode ? 'Upload File' : 'Add Image URL'}</span>
-              </button>
-              <Button
-                size="sm"
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                className="rounded-xl font-bold bg-indigo-600 hover:bg-indigo-700 text-white text-xs h-8 gap-1"
-              >
-                <Plus className="h-3.5 w-3.5" />
-                <span>Add Screenshot</span>
-              </Button>
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {media.screenshots?.map((url, idx) => (
+              <div key={idx} className="relative aspect-video rounded-xl overflow-hidden border border-border bg-secondary/40 group">
+                <img src={url} alt={`Screenshot ${idx + 1}`} className="w-full h-full object-cover" />
+                <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1">
+                  {idx > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => handleMoveScreenshot(idx, idx - 1)}
+                      className="p-1 rounded bg-secondary text-foreground hover:bg-card"
+                      title="Move Left"
+                    >
+                      <MoveLeft className="h-3 w-3" />
+                    </button>
+                  )}
+                  {idx < (media.screenshots?.length || 0) - 1 && (
+                    <button
+                      type="button"
+                      onClick={() => handleMoveScreenshot(idx, idx + 1)}
+                      className="p-1 rounded bg-secondary text-foreground hover:bg-card"
+                      title="Move Right"
+                    >
+                      <MoveRight className="h-3 w-3" />
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveScreenshot(idx)}
+                    className="p-1 rounded bg-destructive text-white hover:bg-destructive/80"
+                    title="Remove"
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </button>
+                </div>
+              </div>
+            ))}
+
+            <div
+              onClick={() => setMediaPickerOpen(true)}
+              className="aspect-video border-2 border-dashed border-border hover:border-indigo-500 rounded-xl p-2 text-center cursor-pointer transition-all bg-secondary/20 hover:bg-secondary/40 flex flex-col items-center justify-center space-y-1"
+            >
+              <Plus className="h-5 w-5 text-indigo-500" />
+              <span className="text-[10px] font-bold text-foreground">Add Screenshot</span>
             </div>
           </div>
-
-          {isUrlInputMode && (
-            <div className="flex gap-2">
-              <input
-                type="text"
-                placeholder="https://cdn.example.com/screenshot1.png"
-                value={directUrlInput}
-                onChange={(e) => setDirectUrlInput(e.target.value)}
-                className="flex-1 h-9 px-3 rounded-xl border border-border bg-secondary/40 text-xs font-medium text-foreground focus:outline-none"
-              />
-              <Button size="sm" type="button" onClick={handleDirectUrlSave} className="rounded-xl font-bold bg-indigo-600 hover:bg-indigo-700 text-white text-xs h-9">
-                Add to Gallery
-              </Button>
-            </div>
-          )}
-
-          {media.screenshots && media.screenshots.length > 0 ? (
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-              {media.screenshots.map((url, idx) => (
-                <div
-                  key={idx}
-                  className="relative rounded-2xl overflow-hidden border border-border bg-secondary/30 group aspect-video"
-                >
-                  <img src={url} alt={`Screenshot ${idx + 1}`} className="w-full h-full object-cover" />
-
-                  {/* Overlay Controls */}
-                  <div className="absolute inset-0 bg-black/70 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-between p-2">
-                    <div className="flex items-center justify-between text-white text-[10px] font-bold">
-                      <span>#{idx + 1}</span>
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveScreenshot(idx)}
-                        className="p-1 rounded-md bg-red-600 hover:bg-red-700 text-white"
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </button>
-                    </div>
-
-                    <div className="flex items-center justify-center gap-1.5">
-                      <button
-                        type="button"
-                        disabled={idx === 0}
-                        onClick={() => handleMoveScreenshot(idx, idx - 1)}
-                        className="p-1 rounded-md bg-card/80 text-foreground hover:bg-card disabled:opacity-30"
-                        title="Move Left"
-                      >
-                        <MoveLeft className="h-3.5 w-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        disabled={idx === media.screenshots!.length - 1}
-                        onClick={() => handleMoveScreenshot(idx, idx + 1)}
-                        className="p-1 rounded-md bg-card/80 text-foreground hover:bg-card disabled:opacity-30"
-                        title="Move Right"
-                      >
-                        <MoveRight className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div
-              onClick={() => fileInputRef.current?.click()}
-              className="border-2 border-dashed border-border hover:border-indigo-500/60 rounded-3xl p-8 text-center cursor-pointer transition-colors bg-secondary/20 hover:bg-secondary/30 flex flex-col items-center justify-center gap-2"
-            >
-              <ImageIcon className="h-8 w-8 text-muted-foreground/50 mb-1" />
-              <span className="font-bold text-xs text-foreground">Zero screenshots added yet</span>
-              <span className="text-[11px] text-muted-foreground">Add preview screenshots for customer product tours</span>
-            </div>
-          )}
         </div>
       )}
     </div>

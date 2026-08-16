@@ -124,10 +124,11 @@ async function runSuite() {
 
     const uploadData = await uploadRes.json();
     const uploadedFile = uploadData?.data || uploadData;
-    let uploadedFileId = uploadedFile?.fileId;
+    let uploadedFileId = uploadedFile?.fileName || uploadedFile?.fileId || uploadedFile?.mediaId;
+    const fileUrl = uploadedFile?.publicUrl || uploadedFile?.url;
 
-    if (uploadRes.ok && uploadedFile?.url) {
-      pass('Step 4: Image Uploaded via Dynamic Storage', `URL: ${uploadedFile.url}, Provider: ${uploadedFile.storageProvider}`);
+    if (uploadRes.ok && fileUrl) {
+      pass('Step 4: Image Uploaded via Dynamic Storage', `URL: ${fileUrl}, Provider: ${uploadedFile.storageProvider}`);
       passedTests++;
     } else {
       fail('Step 4: Image Upload Failed', JSON.stringify(uploadData));

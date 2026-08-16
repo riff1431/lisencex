@@ -31,11 +31,13 @@ import {
   FolderTree,
   MessageSquare,
   Database,
+  Image as ImageIcon,
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 
 const adminLinks = [
   { href: '/admin', label: 'Dashboard', icon: LayoutDashboard, exact: true },
+  { href: '/admin/media', label: 'Media Library', icon: ImageIcon },
   { href: '/admin/products', label: 'Products & Releases', icon: Box },
   { href: '/admin/categories', label: 'Categories & Tags', icon: FolderTree },
   { href: '/admin/license-plans', label: 'License Plans', icon: Layers },
