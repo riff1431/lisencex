@@ -6,7 +6,18 @@ import { apiRequest } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 
 export function ProductReviews({ productId, slug }: { productId?: string; slug: string }) {
-  const [reviews, setReviews] = useState<any[]>([]);
+  const [reviewsData, setReviewsData] = useState<{
+    averageRating: number;
+    totalReviews: number;
+    distribution: Record<string, number>;
+    reviews: any[];
+  }>({
+    averageRating: 5.0,
+    totalReviews: 0,
+    distribution: { '1': 0, '2': 0, '3': 0, '4': 0, '5': 0 },
+    reviews: [],
+  });
+
   const [loading, setLoading] = useState(true);
   const [writeOpen, setWriteOpen] = useState(false);
   const [rating, setRating] = useState(5);
@@ -21,8 +32,22 @@ export function ProductReviews({ productId, slug }: { productId?: string; slug: 
     if (!slug) return;
     try {
       const res = await apiRequest(`/public/products/${slug}/reviews`);
-      if (res.success) {
-        setReviews(res.data || []);
+      if (res.success && res.data) {
+        if (Array.isArray(res.data)) {
+          setReviewsData({
+            averageRating: res.data.length > 0 ? res.data.reduce((a: number, c: any) => a + c.rating, 0) / res.data.length : 5.0,
+            totalReviews: res.data.length,
+            distribution: { '1': 0, '2': 0, '3': 0, '4': 0, '5': 0 },
+            reviews: res.data,
+          });
+        } else {
+          setReviewsData({
+            averageRating: res.data.averageRating ?? 5.0,
+            totalReviews: res.data.totalReviews ?? (res.data.reviews?.length || 0),
+            distribution: res.data.distribution || { '1': 0, '2': 0, '3': 0, '4': 0, '5': 0 },
+            reviews: Array.isArray(res.data.reviews) ? res.data.reviews : [],
+          });
+        }
       }
     } catch (err) {
       console.error('Failed to fetch reviews', err);
@@ -96,10 +121,7 @@ export function ProductReviews({ productId, slug }: { productId?: string; slug: 
     return <div className="py-8 text-center text-muted-foreground text-sm">Loading reviews...</div>;
   }
 
-  const avgRating =
-    reviews.length > 0
-      ? reviews.reduce((acc, curr) => acc + curr.rating, 0) / reviews.length
-      : 5.0;
+  const { averageRating, totalReviews, distribution, reviews } = reviewsData;
 
   return (
     <div className="p-6 rounded-2xl border border-border bg-card space-y-6">
@@ -107,9 +129,9 @@ export function ProductReviews({ productId, slug }: { productId?: string; slug: 
         <div>
           <h3 className="text-lg font-bold text-foreground">Customer Reviews & Ratings</h3>
           <div className="flex items-center gap-2 mt-1">
-            {renderStars(Math.round(avgRating))}
-            <span className="text-sm font-semibold text-foreground">{avgRating.toFixed(1)} / 5</span>
-            <span className="text-xs text-muted-foreground">({reviews.length} {reviews.length === 1 ? 'review' : 'reviews'})</span>
+            {renderStars(Math.round(averageRating))}
+            <span className="text-sm font-semibold text-foreground">{Number(averageRating).toFixed(1)} / 5</span>
+            <span className="text-xs text-muted-foreground">({totalReviews} {totalReviews === 1 ? 'review' : 'reviews'})</span>
           </div>
         </div>
 
@@ -127,13 +149,35 @@ export function ProductReviews({ productId, slug }: { productId?: string; slug: 
         </Button>
       </div>
 
-      {reviews.length === 0 ? (
+      {/* Star Distribution Summary Bar if there are reviews */}
+      {totalReviews > 0 && distribution && (
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-2 p-4 bg-secondary/20 rounded-xl border border-border/50 text-xs">
+          {[5, 4, 3, 2, 1].map((star) => {
+            const count = distribution[star.toString()] || 0;
+            const percentage = totalReviews > 0 ? Math.round((count / totalReviews) * 100) : 0;
+            return (
+              <div key={star} className="flex items-center gap-2">
+                <span className="w-6 font-medium text-foreground text-right">{star}★</span>
+                <div className="flex-1 h-2 bg-secondary rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-amber-400 rounded-full transition-all"
+                    style={{ width: `${percentage}%` }}
+                  />
+                </div>
+                <span className="w-8 text-muted-foreground">{count}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {(!reviews || reviews.length === 0) ? (
         <div className="p-8 rounded-xl bg-secondary/30 text-center">
           <p className="text-sm text-muted-foreground">No customer reviews yet. Be the first verified buyer to leave feedback!</p>
         </div>
       ) : (
         <div className="space-y-6">
-          {reviews.map((review) => (
+          {reviews.map((review: any) => (
             <div key={review._id} className="border-b border-border last:border-0 pb-6 last:pb-0">
               <div className="flex justify-between items-start mb-2">
                 <div>

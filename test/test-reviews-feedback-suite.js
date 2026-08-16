@@ -231,7 +231,8 @@ async function runReviewsSuite() {
 
     // 6. Public Storefront Reviews Endpoint
     const publicReviews = await request(`/public/products/${product.slug}/reviews`);
-    pass('Step 6: Public Storefront Reviews Endpoint Verified', `Returned ${publicReviews.data?.data?.length || 0} reviews`);
+    const count = publicReviews.data?.data?.reviews?.length ?? (Array.isArray(publicReviews.data?.data) ? publicReviews.data.data.length : 0);
+    pass('Step 6: Public Storefront Reviews Endpoint Verified', `Returned ${count} reviews`);
     passedTests++;
 
     // 7. Admin Review Moderation List
