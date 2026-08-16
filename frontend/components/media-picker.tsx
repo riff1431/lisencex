@@ -51,12 +51,11 @@ export function MediaPicker({
   const loadMedia = async () => {
     setLoading(true);
     try {
-      const params = new URLSearchParams({
-        limit: '36',
-        search,
-        mediaType: typeFilter || 'all',
-        folder: folderFilter || '',
-      });
+      const params = new URLSearchParams();
+      params.append('limit', '36');
+      if (search) params.append('search', search);
+      if (typeFilter && typeFilter !== 'all') params.append('mediaType', typeFilter);
+      if (folderFilter) params.append('folder', folderFilter);
       const res = await apiRequest(`/admin/media?${params.toString()}`);
       if (res.data) {
         const d = res.data?.data || res.data;

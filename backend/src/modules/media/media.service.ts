@@ -32,6 +32,7 @@ export interface UploadedMediaResult {
 }
 
 import { IsOptional, IsString, IsEnum, IsNumber } from 'class-validator';
+import { Transform } from 'class-transformer';
 
 export class UpdateMediaDto {
   @IsOptional()
@@ -51,43 +52,53 @@ export class UpdateMediaDto {
   description?: string;
 
   @IsOptional()
+  @Transform(({ value }) => (value === '' ? undefined : value))
   @IsEnum(FileCategory)
   folder?: FileCategory;
 
   @IsOptional()
+  @Transform(({ value }) => (value === '' ? undefined : value))
   @IsEnum(FileVisibility)
   visibility?: FileVisibility;
 }
 
 export class QueryMediaDto {
   @IsOptional()
+  @Transform(({ value }) => (value === '' ? undefined : value))
   @IsString()
   search?: string;
 
   @IsOptional()
+  @Transform(({ value }) => (value === '' || value === 'all' ? undefined : value))
   @IsString()
   mediaType?: 'image' | 'package' | 'document' | 'audio' | 'video' | 'all';
 
   @IsOptional()
+  @Transform(({ value }) => (value === '' ? undefined : value))
   @IsString()
   folder?: string;
 
   @IsOptional()
+  @Transform(({ value }) => (value === '' ? undefined : value))
   @IsEnum(StorageProviderType)
   storageProvider?: StorageProviderType;
 
   @IsOptional()
+  @Transform(({ value }) => (value === '' ? undefined : value))
   @IsEnum(FileVisibility)
   visibility?: FileVisibility;
 
   @IsOptional()
+  @Transform(({ value }) => (value === '' ? undefined : value))
   @IsString()
   sort?: 'newest' | 'oldest' | 'name_asc' | 'name_desc' | 'size_desc' | 'size_asc';
 
   @IsOptional()
+  @Transform(({ value }) => (value === '' ? undefined : Number(value)))
   page?: number;
 
   @IsOptional()
+  @Transform(({ value }) => (value === '' ? undefined : Number(value)))
   limit?: number;
 }
 

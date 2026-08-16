@@ -80,16 +80,15 @@ export default function AdminMediaLibraryPage() {
   const loadMedia = async () => {
     try {
       setRefreshing(true);
-      const params = new URLSearchParams({
-        page: page.toString(),
-        limit: viewMode === 'grid' ? '24' : '15',
-        search,
-        mediaType: typeFilter,
-        folder: folderFilter,
-        storageProvider: providerFilter,
-        visibility: visibilityFilter,
-        sort: sortBy,
-      });
+      const params = new URLSearchParams();
+      params.append('page', page.toString());
+      params.append('limit', viewMode === 'grid' ? '24' : '15');
+      if (search) params.append('search', search);
+      if (typeFilter && typeFilter !== 'all') params.append('mediaType', typeFilter);
+      if (folderFilter) params.append('folder', folderFilter);
+      if (providerFilter) params.append('storageProvider', providerFilter);
+      if (visibilityFilter) params.append('visibility', visibilityFilter);
+      if (sortBy) params.append('sort', sortBy);
 
       const res = await apiRequest(`/admin/media?${params.toString()}`);
       if (res.data) {

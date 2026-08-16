@@ -69,10 +69,17 @@ export default function AdminStorageSettingsPage() {
   const loadAllData = async () => {
     try {
       setRefreshing(true);
+      const fileParams = new URLSearchParams();
+      fileParams.append('page', page.toString());
+      fileParams.append('limit', '10');
+      if (search) fileParams.append('search', search);
+      if (providerFilter) fileParams.append('provider', providerFilter);
+      if (categoryFilter) fileParams.append('category', categoryFilter);
+
       const [configsRes, statsRes, filesRes] = await Promise.all([
         apiRequest('/admin/storage/config'),
         apiRequest('/admin/storage/stats'),
-        apiRequest(`/admin/storage/files?page=${page}&limit=10&search=${encodeURIComponent(search)}&provider=${providerFilter}&category=${categoryFilter}`),
+        apiRequest(`/admin/storage/files?${fileParams.toString()}`),
       ]);
 
       if (configsRes.data) {
