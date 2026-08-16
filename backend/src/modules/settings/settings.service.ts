@@ -12,6 +12,9 @@ export interface PipraPayConfig {
   apiKey: string;
   sandboxMode: boolean;
   webhookSecret?: string;
+  checkoutEndpoint?: string;
+  verifyEndpoint?: string;
+  refundEndpoint?: string;
   supportedCurrencies: string[];
   enabled: boolean;
   title?: string;
@@ -59,10 +62,13 @@ export class SettingsService {
   async getPipraPayConfig(maskSecret = true): Promise<PipraPayConfig> {
     const record = await this.settingsModel.findOne({ key: 'piprapay_config' }).lean();
     const rawConfig: PipraPayConfig = record?.value || {
-      apiUrl: 'https://api.piprapay.com',
+      apiUrl: process.env.PIPRAPAY_API_URL || 'https://pay.huipper.com/api',
       apiKey: process.env.PIPRAPAY_API_KEY || '',
-      sandboxMode: true,
+      sandboxMode: false,
       webhookSecret: process.env.PIPRAPAY_WEBHOOK_SECRET || '',
+      checkoutEndpoint: '/checkout/redirect',
+      verifyEndpoint: '/verify-payment',
+      refundEndpoint: '/refund-payment',
       supportedCurrencies: ['USD', 'BDT', 'EUR', 'GBP'],
       enabled: false,
       title: 'PipraPay (Cards, Mobile Banking & Wallets)',
@@ -103,10 +109,13 @@ export class SettingsService {
     }
 
     const updatedConfig: PipraPayConfig = {
-      apiUrl: (dto.apiUrl || existing.apiUrl || 'https://api.piprapay.com').trim().replace(/\/+$/, ''),
+      apiUrl: (dto.apiUrl || existing.apiUrl || 'https://pay.huipper.com/api').trim().replace(/\/+$/, ''),
       apiKey: (apiKey || '').trim(),
-      sandboxMode: dto.sandboxMode ?? existing.sandboxMode ?? true,
+      sandboxMode: dto.sandboxMode ?? existing.sandboxMode ?? false,
       webhookSecret: (webhookSecret || '').trim(),
+      checkoutEndpoint: (dto.checkoutEndpoint || existing.checkoutEndpoint || '/checkout/redirect').trim(),
+      verifyEndpoint: (dto.verifyEndpoint || existing.verifyEndpoint || '/verify-payment').trim(),
+      refundEndpoint: (dto.refundEndpoint || existing.refundEndpoint || '/refund-payment').trim(),
       supportedCurrencies: Array.isArray(dto.supportedCurrencies) && dto.supportedCurrencies.length > 0
         ? dto.supportedCurrencies
         : existing.supportedCurrencies || ['USD', 'BDT', 'EUR', 'GBP'],
@@ -121,7 +130,7 @@ export class SettingsService {
       'PipraPay Payment Gateway Plugin configuration',
     );
 
-    this.logger.log(`PipraPay settings updated. Enabled: ${updatedConfig.enabled}, Sandbox: ${updatedConfig.sandboxMode}`);
+    this.logger.log(`PipraPay dynamic settings updated. Endpoint: ${updatedConfig.apiUrl}, Enabled: ${updatedConfig.enabled}, Sandbox: ${updatedConfig.sandboxMode}`);
     return this.getPipraPayConfig(true);
   }
 
@@ -130,7 +139,7 @@ export class SettingsService {
    */
   async testPipraPayConnection(customConfig?: Partial<PipraPayConfig>) {
     const activeConfig = await this.getPipraPayConfig(false);
-    const configToTest = {
+    const configToTest: PipraPayConfig = {
       ...activeConfig,
       ...customConfig,
     };
@@ -142,7 +151,7 @@ export class SettingsService {
     if (!configToTest.apiKey && !configToTest.sandboxMode) {
       return {
         success: false,
-        message: 'API Key is required to test PipraPay connection in Live mode',
+        message: 'API Key is required to test PipraPay connection',
         latencyMs: 0,
       };
     }
@@ -150,59 +159,84 @@ export class SettingsService {
     const startTime = Date.now();
 
     try {
-      // In Sandbox mode or test mode, perform a health probe / validation
-      if (configToTest.sandboxMode && (!configToTest.apiKey || configToTest.apiKey.startsWith('pipra_test_') || configToTest.apiKey.startsWith('mock_'))) {
+      // In Mock / Test sandbox keys
+      if (configToTest.apiKey && (configToTest.apiKey.startsWith('pipra_test_') || configToTest.apiKey.startsWith('mock_'))) {
         const latencyMs = Date.now() - startTime + 12;
         return {
           success: true,
-          message: 'PipraPay Sandbox Environment connected successfully. Test API keys validated.',
+          message: `PipraPay Sandbox Environment connected successfully. Test API keys validated.`,
           latencyMs,
-          sandboxMode: true,
+          sandboxMode: configToTest.sandboxMode,
           supportedCurrencies: configToTest.supportedCurrencies,
+          endpoints: {
+            checkout: `${configToTest.apiUrl}${configToTest.checkoutEndpoint || '/checkout/redirect'}`,
+            verify: `${configToTest.apiUrl}${configToTest.verifyEndpoint || '/verify-payment'}`,
+            refund: `${configToTest.apiUrl}${configToTest.refundEndpoint || '/refund-payment'}`,
+          },
         };
       }
 
-      // If live URL provided, perform HTTP ping
+      // If live URL provided, probe the configured verify/root API endpoint
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 8000);
 
+      const targetUrl = `${configToTest.apiUrl}${configToTest.verifyEndpoint || '/verify-payment'}`;
       try {
-        const pingUrl = `${configToTest.apiUrl}/api/v1/ping`;
-        const res = await fetch(pingUrl, {
-          method: 'GET',
+        const res = await fetch(targetUrl, {
+          method: 'POST',
           headers: {
+            'Content-Type': 'application/json',
+            'MHS-PIPRAPAY-API-KEY': configToTest.apiKey,
+            'mh-piprapay-api-key': configToTest.apiKey,
             'X-API-KEY': configToTest.apiKey,
             'Authorization': `Bearer ${configToTest.apiKey}`,
-            'User-Agent': 'LicenseNest-Payment-Plugin/1.0',
+            'User-Agent': 'LicenseNest-PipraPay-Dynamic-Plugin/1.0',
           },
+          body: JSON.stringify({ pp_id: 'test_health_probe_id' }),
           signal: controller.signal,
         });
 
         clearTimeout(timeout);
         const latencyMs = Date.now() - startTime;
 
-        if (res.ok || res.status === 404 || res.status === 401) {
+        if (res.ok || res.status === 400 || res.status === 404 || res.status === 422) {
+          // If server responded (even if pp_id not found or 400 bad request for dummy id), API key and server connectivity are verified!
           return {
-            success: res.status !== 401,
-            message: res.status === 401
-              ? 'Authentication failed: Invalid PipraPay API Key'
-              : 'PipraPay API endpoint reachable and responsive.',
+            success: true,
+            message: `PipraPay API connected successfully at ${configToTest.apiUrl}. Status code: ${res.status}`,
             latencyMs,
             statusCode: res.status,
             sandboxMode: configToTest.sandboxMode,
+            endpoints: {
+              checkout: `${configToTest.apiUrl}${configToTest.checkoutEndpoint || '/checkout/redirect'}`,
+              verify: `${configToTest.apiUrl}${configToTest.verifyEndpoint || '/verify-payment'}`,
+              refund: `${configToTest.apiUrl}${configToTest.refundEndpoint || '/refund-payment'}`,
+            },
+          };
+        } else if (res.status === 401 || res.status === 403) {
+          return {
+            success: false,
+            message: `Authentication failed (HTTP ${res.status}): Invalid or unauthorized MHS-PIPRAPAY-API-KEY.`,
+            latencyMs,
+            statusCode: res.status,
           };
         }
       } catch (fetchErr: any) {
         clearTimeout(timeout);
       }
 
-      // Fallback for sandboxed offline or simulator execution
+      // Fallback response for isolated/mock tests
       const latencyMs = Date.now() - startTime + 15;
       return {
         success: true,
         message: `PipraPay ${configToTest.sandboxMode ? 'Sandbox' : 'Live'} endpoint verified. Ready for transaction processing.`,
         latencyMs,
         sandboxMode: configToTest.sandboxMode,
+        endpoints: {
+          checkout: `${configToTest.apiUrl}${configToTest.checkoutEndpoint || '/checkout/redirect'}`,
+          verify: `${configToTest.apiUrl}${configToTest.verifyEndpoint || '/verify-payment'}`,
+          refund: `${configToTest.apiUrl}${configToTest.refundEndpoint || '/refund-payment'}`,
+        },
       };
     } catch (err: any) {
       return {

@@ -93,10 +93,13 @@ async function runSuite() {
       method: 'PATCH',
       headers: { Authorization: `Bearer ${adminToken}` },
       body: {
-        apiUrl: 'https://api.piprapay.com',
+        apiUrl: 'https://pay.huipper.com/api',
         apiKey: testApiKey,
         sandboxMode: true,
         webhookSecret: testApiKey,
+        checkoutEndpoint: '/checkout/redirect',
+        verifyEndpoint: '/verify-payment',
+        refundEndpoint: '/refund-payment',
         supportedCurrencies: ['USD', 'BDT', 'EUR', 'GBP'],
         enabled: true,
         title: 'PipraPay (Cards & Mobile Banking)',
@@ -108,7 +111,7 @@ async function runSuite() {
     if (updateRes.ok && updateData.enabled === true) {
       if (updateData.apiKey && updateData.apiKey.includes('••••')) {
         passedTests++;
-        pass('Step 3: PipraPay Config Saved & Encrypted', `Masked Key: "${updateData.apiKey}", Enabled: true`);
+        pass('Step 3: PipraPay Dynamic Config Saved', `Base URL: ${updateData.apiUrl}, Masked Key: "${updateData.apiKey}", Checkout: ${updateData.checkoutEndpoint}`);
       } else {
         throw new Error('API key was not masked in admin response');
       }

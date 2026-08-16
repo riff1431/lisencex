@@ -26,6 +26,10 @@ import {
   DollarSign,
   Wallet,
   Building,
+  Terminal,
+  Code2,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { apiRequest } from '@/lib/api';
@@ -45,10 +49,13 @@ const AVAILABLE_CURRENCIES = [
 
 export default function AdminPipraPaySettingsPage() {
   const [config, setConfig] = useState({
-    apiUrl: 'https://api.piprapay.com',
+    apiUrl: 'https://pay.huipper.com/api',
     apiKey: '',
-    sandboxMode: true,
+    sandboxMode: false,
     webhookSecret: '',
+    checkoutEndpoint: '/checkout/redirect',
+    verifyEndpoint: '/verify-payment',
+    refundEndpoint: '/refund-payment',
     supportedCurrencies: ['USD', 'BDT', 'EUR', 'GBP'],
     enabled: false,
     title: 'PipraPay (Cards, Mobile Banking & Wallets)',
@@ -62,8 +69,9 @@ export default function AdminPipraPaySettingsPage() {
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [copiedWebhook, setCopiedWebhook] = useState(false);
   const [showApiKey, setShowApiKey] = useState(false);
+  const [showAdvancedEndpoints, setShowAdvancedEndpoints] = useState(false);
 
-  // Webhook URL (calculated based on browser host or standard api route)
+  // Webhook URL
   const [webhookUrl, setWebhookUrl] = useState('');
 
   useEffect(() => {
@@ -82,6 +90,10 @@ export default function AdminPipraPaySettingsPage() {
         setConfig((prev) => ({
           ...prev,
           ...data,
+          apiUrl: data.apiUrl || 'https://pay.huipper.com/api',
+          checkoutEndpoint: data.checkoutEndpoint || '/checkout/redirect',
+          verifyEndpoint: data.verifyEndpoint || '/verify-payment',
+          refundEndpoint: data.refundEndpoint || '/refund-payment',
           supportedCurrencies: data.supportedCurrencies || prev.supportedCurrencies,
         }));
       }
@@ -133,7 +145,7 @@ export default function AdminPipraPaySettingsPage() {
 
       setFeedback({
         type: 'success',
-        message: 'PipraPay configuration saved successfully! Active status: ' + (config.enabled ? 'Enabled' : 'Disabled'),
+        message: 'PipraPay dynamic configuration saved successfully! Active status: ' + (config.enabled ? 'Enabled' : 'Disabled'),
       });
       setTimeout(() => setFeedback(null), 5000);
     } catch (err: any) {
@@ -166,6 +178,9 @@ export default function AdminPipraPaySettingsPage() {
     }
   };
 
+  // Clean base URL preview
+  const cleanBase = (config.apiUrl || 'https://pay.huipper.com/api').trim().replace(/\/+$/, '');
+
   return (
     <div className="space-y-8 max-w-6xl pb-16">
       {/* Top Breadcrumb & Header */}
@@ -179,16 +194,16 @@ export default function AdminPipraPaySettingsPage() {
             <span>/</span>
             <span className="text-foreground font-medium">Payment Gateways</span>
             <span>/</span>
-            <span className="text-indigo-500 font-bold">PipraPay</span>
+            <span className="text-emerald-500 font-bold">PipraPay</span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-black tracking-tight flex items-center gap-3">
             <span className="h-9 w-9 rounded-2xl bg-gradient-to-tr from-emerald-600 to-teal-500 text-white flex items-center justify-center shadow-md shadow-emerald-500/20">
               <Zap className="h-5 w-5 fill-current" />
             </span>
-            PipraPay Payment Gateway
+            PipraPay Dynamic Payment Gateway
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Seamless multi-currency checkout supporting Cards, bKash, Nagad, Rocket & Global Digital Wallets
+            Dynamic integration for Self-Hosted & Cloud PipraPay instances (Cards, bKash, Nagad, Rocket & Global Wallets)
           </p>
         </div>
 
@@ -214,8 +229,8 @@ export default function AdminPipraPaySettingsPage() {
             disabled={testing || saving}
             className="rounded-xl border border-border"
           >
-            <Activity className={`h-4 w-4 mr-1.5 text-indigo-500 ${testing ? 'animate-pulse' : ''}`} />
-            {testing ? 'Testing...' : 'Test Connection'}
+            <Activity className={`h-4 w-4 mr-1.5 text-emerald-500 ${testing ? 'animate-pulse' : ''}`} />
+            {testing ? 'Testing Endpoint...' : 'Test Connection'}
           </Button>
         </div>
       </div>
@@ -268,9 +283,9 @@ export default function AdminPipraPaySettingsPage() {
               >
                 {testResult.success ? <CheckCircle2 className="h-5 w-5" /> : <AlertCircle className="h-5 w-5" />}
               </div>
-              <div>
+              <div className="space-y-1">
                 <h4 className="font-bold text-sm text-foreground flex items-center gap-2">
-                  {testResult.success ? 'Connection Health Check Passed' : 'Connection Failed'}
+                  {testResult.success ? 'PipraPay Endpoint Connected & Verified' : 'Connection Failed'}
                   <span
                     className={`text-[10px] uppercase font-mono px-2 py-0.5 rounded-full border ${
                       testResult.success
@@ -281,7 +296,23 @@ export default function AdminPipraPaySettingsPage() {
                     {testResult.latencyMs}ms Latency
                   </span>
                 </h4>
-                <p className="text-xs text-muted-foreground mt-0.5">{testResult.message}</p>
+                <p className="text-xs text-muted-foreground">{testResult.message}</p>
+                {testResult.endpoints && (
+                  <div className="pt-2 grid grid-cols-1 sm:grid-cols-3 gap-2 text-[10px] font-mono text-muted-foreground">
+                    <div className="p-2 rounded-xl bg-secondary/40 border border-border">
+                      <span className="text-foreground font-bold block">Checkout:</span>
+                      <span className="truncate block">{testResult.endpoints.checkout}</span>
+                    </div>
+                    <div className="p-2 rounded-xl bg-secondary/40 border border-border">
+                      <span className="text-foreground font-bold block">Verify:</span>
+                      <span className="truncate block">{testResult.endpoints.verify}</span>
+                    </div>
+                    <div className="p-2 rounded-xl bg-secondary/40 border border-border">
+                      <span className="text-foreground font-bold block">Refund:</span>
+                      <span className="truncate block">{testResult.endpoints.refund}</span>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
             <Button
@@ -296,20 +327,20 @@ export default function AdminPipraPaySettingsPage() {
         </div>
       )}
 
-      {/* Main Grid: Status Summary & Settings Form */}
+      {/* Main Grid: Settings Form & Information Sidebar */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
         {/* Left Column (8 cols): Configuration Form */}
         <form onSubmit={handleSave} className="lg:col-span-8 space-y-6">
-          {/* Section 1: Provider Status & Mode */}
+          {/* Section 1: Gateway Status & Operational Mode */}
           <div className="p-6 rounded-3xl bg-card border border-border space-y-6 shadow-xs">
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="font-bold text-base text-foreground flex items-center gap-2">
-                  <Sliders className="h-4 w-4 text-indigo-500" />
+                  <Sliders className="h-4 w-4 text-emerald-500" />
                   Gateway Status & Operational Mode
                 </h3>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  Control live checkout availability and sandbox simulation mode
+                  Activate or deactivate PipraPay on customer checkout
                 </p>
               </div>
 
@@ -365,7 +396,7 @@ export default function AdminPipraPaySettingsPage() {
                 className={`p-4 rounded-2xl border cursor-pointer transition-all flex items-center justify-between ${
                   config.sandboxMode
                     ? 'border-amber-500/50 bg-amber-500/5 shadow-xs'
-                    : 'border-indigo-500/50 bg-indigo-500/5 shadow-xs'
+                    : 'border-emerald-500/50 bg-emerald-500/5 shadow-xs'
                 }`}
               >
                 <div>
@@ -375,19 +406,19 @@ export default function AdminPipraPaySettingsPage() {
                       className={`text-[9px] uppercase px-1.5 py-0.2 rounded font-mono font-bold ${
                         config.sandboxMode
                           ? 'bg-amber-500/20 text-amber-500'
-                          : 'bg-indigo-500/20 text-indigo-500'
+                          : 'bg-emerald-500/20 text-emerald-500'
                       }`}
                     >
-                      {config.sandboxMode ? 'TEST' : 'LIVE'}
+                      {config.sandboxMode ? 'SANDBOX' : 'LIVE'}
                     </span>
                   </div>
                   <div className="text-[11px] text-muted-foreground mt-0.5">
-                    {config.sandboxMode ? 'Simulate payments without real money' : 'Process actual customer funds'}
+                    {config.sandboxMode ? 'Test mode with sandbox simulation' : 'Process live customer payments'}
                   </div>
                 </div>
                 <div
                   className={`w-11 h-6 flex items-center rounded-full p-1 transition-colors duration-300 ${
-                    config.sandboxMode ? 'bg-amber-500' : 'bg-indigo-500'
+                    config.sandboxMode ? 'bg-amber-500' : 'bg-emerald-500'
                   }`}
                 >
                   <div
@@ -400,25 +431,25 @@ export default function AdminPipraPaySettingsPage() {
             </div>
           </div>
 
-          {/* Section 2: API Credentials */}
+          {/* Section 2: Dynamic API Connection & Credentials */}
           <div className="p-6 rounded-3xl bg-card border border-border space-y-5 shadow-xs">
             <div>
               <h3 className="font-bold text-base text-foreground flex items-center gap-2">
-                <Key className="h-4 w-4 text-emerald-500" />
-                API Credentials & Endpoint
+                <Globe className="h-4 w-4 text-emerald-500" />
+                Dynamic Server & API Endpoints
               </h3>
               <p className="text-xs text-muted-foreground mt-0.5">
-                Obtain your credentials from the official PipraPay Merchant Dashboard
+                Configure your Self-Hosted (e.g. pay.huipper.com/api) or Cloud PipraPay API instance
               </p>
             </div>
 
             <div className="space-y-4">
-              {/* API Base URL */}
+              {/* Base URL */}
               <div className="space-y-1.5">
                 <label className="text-xs font-semibold text-foreground flex items-center justify-between">
-                  <span>API Base URL</span>
-                  <span className="text-[10px] text-muted-foreground font-mono">
-                    {config.sandboxMode ? 'Sandbox Endpoint' : 'Production Endpoint'}
+                  <span>Base API URL (Root Endpoint)</span>
+                  <span className="text-[10px] text-emerald-500 font-mono font-bold">
+                    e.g. https://pay.huipper.com/api
                   </span>
                 </label>
                 <div className="relative">
@@ -427,54 +458,122 @@ export default function AdminPipraPaySettingsPage() {
                     type="text"
                     value={config.apiUrl}
                     onChange={(e) => setConfig({ ...config, apiUrl: e.target.value })}
-                    placeholder="https://api.piprapay.com"
+                    placeholder="https://pay.huipper.com/api"
                     className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-secondary/50 border border-border text-xs focus:ring-2 focus:ring-emerald-500/20 focus:outline-hidden font-mono"
                     required
                   />
                 </div>
               </div>
 
-              {/* API Key */}
+              {/* API Key (MHS-PIPRAPAY-API-KEY) */}
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between">
-                  <label className="text-xs font-semibold text-foreground">API Key / Secret Token</label>
+                  <label className="text-xs font-semibold text-foreground flex items-center gap-2">
+                    <span>API Key (MHS-PIPRAPAY-API-KEY)</span>
+                    <span className="text-[9px] px-1.5 py-0.2 rounded bg-emerald-500/10 text-emerald-500 font-mono font-bold border border-emerald-500/20">
+                      Header Auth
+                    </span>
+                  </label>
                   <button
                     type="button"
                     onClick={() => setShowApiKey(!showApiKey)}
-                    className="text-[11px] text-indigo-500 hover:text-indigo-600 font-medium"
+                    className="text-[11px] text-emerald-500 hover:text-emerald-600 font-medium"
                   >
                     {showApiKey ? 'Mask Key' : 'Reveal Key'}
                   </button>
                 </div>
                 <div className="relative">
-                  <Lock className="h-4 w-4 absolute left-3.5 top-3 text-muted-foreground" />
+                  <Key className="h-4 w-4 absolute left-3.5 top-3 text-muted-foreground" />
                   <input
                     type={showApiKey ? 'text' : 'password'}
                     value={config.apiKey}
                     onChange={(e) => setConfig({ ...config, apiKey: e.target.value })}
-                    placeholder="pipra_live_..."
+                    placeholder="Enter PipraPay API Key from Merchant Panel..."
                     className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-secondary/50 border border-border text-xs focus:ring-2 focus:ring-emerald-500/20 focus:outline-hidden font-mono"
                   />
                 </div>
                 <p className="text-[10px] text-muted-foreground">
-                  Credentials are encrypted server-side and never exposed to client browsers.
+                  Sent securely via <code className="font-mono text-foreground font-bold">MHS-PIPRAPAY-API-KEY</code> and <code className="font-mono text-foreground font-bold">X-API-KEY</code> headers.
                 </p>
               </div>
 
-              {/* Webhook Secret Key */}
+              {/* Optional Webhook Signing Secret */}
               <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-foreground">Webhook Secret (Optional)</label>
+                <label className="text-xs font-semibold text-foreground">Webhook Signing Secret (Optional)</label>
                 <div className="relative">
                   <ShieldCheck className="h-4 w-4 absolute left-3.5 top-3 text-muted-foreground" />
                   <input
                     type="password"
                     value={config.webhookSecret || ''}
                     onChange={(e) => setConfig({ ...config, webhookSecret: e.target.value })}
-                    placeholder="Optional HMAC secret (defaults to API Key if omitted)"
+                    placeholder="Optional HMAC webhook secret (defaults to API key if omitted)"
                     className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-secondary/50 border border-border text-xs focus:ring-2 focus:ring-emerald-500/20 focus:outline-hidden font-mono"
                   />
                 </div>
               </div>
+            </div>
+
+            {/* Advanced Endpoint Paths Collapsible */}
+            <div className="pt-2 border-t border-border">
+              <button
+                type="button"
+                onClick={() => setShowAdvancedEndpoints(!showAdvancedEndpoints)}
+                className="flex items-center justify-between w-full py-2 text-xs font-bold text-foreground hover:text-emerald-500 transition-colors"
+              >
+                <span className="flex items-center gap-2">
+                  <Terminal className="h-3.5 w-3.5 text-emerald-500" />
+                  Advanced Endpoint Routing & Custom Paths
+                </span>
+                {showAdvancedEndpoints ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+              </button>
+
+              {showAdvancedEndpoints && (
+                <div className="space-y-3 pt-3 animate-in fade-in slide-in-from-top-1 duration-200">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-semibold text-foreground">Gateway Checkout Path</label>
+                      <input
+                        type="text"
+                        value={config.checkoutEndpoint || '/checkout/redirect'}
+                        onChange={(e) => setConfig({ ...config, checkoutEndpoint: e.target.value })}
+                        placeholder="/checkout/redirect"
+                        className="w-full px-3 py-2 rounded-xl bg-secondary/50 border border-border text-xs font-mono"
+                      />
+                      <span className="text-[9px] text-muted-foreground block truncate">
+                        Full: {cleanBase}{config.checkoutEndpoint || '/checkout/redirect'}
+                      </span>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-semibold text-foreground">Verify Payment Path</label>
+                      <input
+                        type="text"
+                        value={config.verifyEndpoint || '/verify-payment'}
+                        onChange={(e) => setConfig({ ...config, verifyEndpoint: e.target.value })}
+                        placeholder="/verify-payment"
+                        className="w-full px-3 py-2 rounded-xl bg-secondary/50 border border-border text-xs font-mono"
+                      />
+                      <span className="text-[9px] text-muted-foreground block truncate">
+                        Full: {cleanBase}{config.verifyEndpoint || '/verify-payment'}
+                      </span>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-semibold text-foreground">Refund Payment Path</label>
+                      <input
+                        type="text"
+                        value={config.refundEndpoint || '/refund-payment'}
+                        onChange={(e) => setConfig({ ...config, refundEndpoint: e.target.value })}
+                        placeholder="/refund-payment"
+                        className="w-full px-3 py-2 rounded-xl bg-secondary/50 border border-border text-xs font-mono"
+                      />
+                      <span className="text-[9px] text-muted-foreground block truncate">
+                        Full: {cleanBase}{config.refundEndpoint || '/refund-payment'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
@@ -483,10 +582,10 @@ export default function AdminPipraPaySettingsPage() {
             <div>
               <h3 className="font-bold text-base text-foreground flex items-center gap-2">
                 <Server className="h-4 w-4 text-teal-500" />
-                Automated Webhook Endpoint
+                Automated Webhook Callback URL
               </h3>
               <p className="text-xs text-muted-foreground mt-0.5">
-                Copy this URL into your PipraPay Merchant Dashboard Webhook settings
+                Paste this into your PipraPay Merchant Dashboard Webhook settings
               </p>
             </div>
 
@@ -518,8 +617,7 @@ export default function AdminPipraPaySettingsPage() {
             <div className="p-3.5 rounded-2xl bg-teal-500/5 border border-teal-500/10 flex items-start gap-2.5 text-[11px] text-muted-foreground">
               <Info className="h-4 w-4 text-teal-500 shrink-0 mt-0.5" />
               <span>
-                PipraPay sends instant server-to-server notifications to this webhook when customers finish checkout.
-                Our backend automatically verifies the cryptographic HMAC signature and issues licenses immediately.
+                When payments are completed, PipraPay automatically pings this endpoint. The LicenseNest engine validates the signature, performs server verification, and immediately fulfills the order and generates license keys.
               </span>
             </div>
           </div>
@@ -528,11 +626,11 @@ export default function AdminPipraPaySettingsPage() {
           <div className="p-6 rounded-3xl bg-card border border-border space-y-5 shadow-xs">
             <div>
               <h3 className="font-bold text-base text-foreground flex items-center gap-2">
-                <DollarSign className="h-4 w-4 text-indigo-500" />
+                <DollarSign className="h-4 w-4 text-emerald-500" />
                 Supported Currencies & Checkout Customization
               </h3>
               <p className="text-xs text-muted-foreground mt-0.5">
-                Select which customer billing currencies are routed to PipraPay
+                Select which customer billing currencies route through PipraPay
               </p>
             </div>
 
@@ -549,13 +647,13 @@ export default function AdminPipraPaySettingsPage() {
                       onClick={() => handleCurrencyToggle(curr.code)}
                       className={`p-2.5 rounded-2xl border text-left transition-all flex flex-col justify-between ${
                         isSelected
-                          ? 'border-indigo-500/60 bg-indigo-500/10 text-foreground ring-1 ring-indigo-500/30'
+                          ? 'border-emerald-500/60 bg-emerald-500/10 text-foreground ring-1 ring-emerald-500/30'
                           : 'border-border bg-secondary/30 text-muted-foreground hover:bg-secondary/60'
                       }`}
                     >
                       <div className="flex items-center justify-between">
                         <span className="text-base">{curr.flag}</span>
-                        {isSelected && <Check className="h-3.5 w-3.5 text-indigo-500 stroke-[3]" />}
+                        {isSelected && <Check className="h-3.5 w-3.5 text-emerald-500 stroke-[3]" />}
                       </div>
                       <div className="mt-1">
                         <div className="font-bold text-xs">{curr.code}</div>
@@ -576,7 +674,7 @@ export default function AdminPipraPaySettingsPage() {
                   value={config.title || ''}
                   onChange={(e) => setConfig({ ...config, title: e.target.value })}
                   placeholder="PipraPay (Cards & Mobile Wallets)"
-                  className="w-full px-3.5 py-2 rounded-xl bg-secondary/50 border border-border text-xs focus:ring-2 focus:ring-indigo-500/20 focus:outline-hidden"
+                  className="w-full px-3.5 py-2 rounded-xl bg-secondary/50 border border-border text-xs focus:ring-2 focus:ring-emerald-500/20 focus:outline-hidden"
                 />
               </div>
 
@@ -587,7 +685,7 @@ export default function AdminPipraPaySettingsPage() {
                   value={config.description || ''}
                   onChange={(e) => setConfig({ ...config, description: e.target.value })}
                   placeholder="Pay with Card, bKash, Nagad, etc."
-                  className="w-full px-3.5 py-2 rounded-xl bg-secondary/50 border border-border text-xs focus:ring-2 focus:ring-indigo-500/20 focus:outline-hidden"
+                  className="w-full px-3.5 py-2 rounded-xl bg-secondary/50 border border-border text-xs focus:ring-2 focus:ring-emerald-500/20 focus:outline-hidden"
                 />
               </div>
             </div>
@@ -615,54 +713,72 @@ export default function AdminPipraPaySettingsPage() {
           </div>
         </form>
 
-        {/* Right Column (4 cols): Information & Supported Payment Channels */}
+        {/* Right Column (4 cols): Information & Dynamic API Endpoints Reference */}
         <div className="lg:col-span-4 space-y-6">
-          {/* Quick Overview Card */}
+          {/* Quick Endpoint Reference Card */}
           <div className="p-6 rounded-3xl bg-gradient-to-br from-card via-card to-emerald-500/5 border border-border space-y-4 shadow-xs">
             <div className="flex items-center gap-3">
               <div className="h-10 w-10 rounded-2xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center font-bold">
-                <Sparkles className="h-5 w-5" />
+                <Code2 className="h-5 w-5" />
               </div>
               <div>
-                <h4 className="font-bold text-sm text-foreground">Plugin Highlights</h4>
-                <p className="text-[11px] text-muted-foreground">Native Payment SDK Integration</p>
+                <h4 className="font-bold text-sm text-foreground">Dynamic Endpoints</h4>
+                <p className="text-[11px] text-muted-foreground">OpenAPI V3+ Spec Aligned</p>
               </div>
             </div>
 
-            <ul className="space-y-2.5 text-xs text-muted-foreground pt-1">
-              <li className="flex items-start gap-2">
-                <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0 mt-0.5" />
-                <span><strong>Instant License Delivery:</strong> Automates order fulfillment upon webhook confirmation.</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0 mt-0.5" />
-                <span><strong>Idempotency Guard:</strong> Prevents duplicate charge fulfillment or double-license generation.</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0 mt-0.5" />
-                <span><strong>Cryptographic HMAC:</strong> Validates signatures before processing state transitions.</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0 mt-0.5" />
-                <span><strong>Refunds & Revocations:</strong> Supports full and partial refunds with automated license disabling.</span>
-              </li>
-            </ul>
+            <div className="space-y-2.5 text-xs text-muted-foreground pt-1">
+              <div className="p-3 rounded-2xl bg-secondary/50 border border-border space-y-1">
+                <div className="font-bold text-[11px] text-foreground flex items-center justify-between">
+                  <span>Root API Endpoint</span>
+                  <span className="text-[9px] uppercase font-mono px-1.5 py-0.2 bg-emerald-500/10 text-emerald-500 rounded">GET/POST</span>
+                </div>
+                <div className="font-mono text-[10px] text-muted-foreground truncate">{cleanBase}</div>
+              </div>
+
+              <div className="p-3 rounded-2xl bg-secondary/50 border border-border space-y-1">
+                <div className="font-bold text-[11px] text-foreground flex items-center justify-between">
+                  <span>Gateway Checkout</span>
+                  <span className="text-[9px] uppercase font-mono px-1.5 py-0.2 bg-blue-500/10 text-blue-500 rounded">POST</span>
+                </div>
+                <div className="font-mono text-[10px] text-muted-foreground truncate">
+                  {cleanBase}{config.checkoutEndpoint || '/checkout/redirect'}
+                </div>
+              </div>
+
+              <div className="p-3 rounded-2xl bg-secondary/50 border border-border space-y-1">
+                <div className="font-bold text-[11px] text-foreground flex items-center justify-between">
+                  <span>Verify Payment</span>
+                  <span className="text-[9px] uppercase font-mono px-1.5 py-0.2 bg-purple-500/10 text-purple-500 rounded">POST</span>
+                </div>
+                <div className="font-mono text-[10px] text-muted-foreground truncate">
+                  {cleanBase}{config.verifyEndpoint || '/verify-payment'}
+                </div>
+              </div>
+
+              <div className="p-3 rounded-2xl bg-secondary/50 border border-border space-y-1">
+                <div className="font-bold text-[11px] text-foreground flex items-center justify-between">
+                  <span>Refund Payment</span>
+                  <span className="text-[9px] uppercase font-mono px-1.5 py-0.2 bg-amber-500/10 text-amber-500 rounded">POST</span>
+                </div>
+                <div className="font-mono text-[10px] text-muted-foreground truncate">
+                  {cleanBase}{config.refundEndpoint || '/refund-payment'}
+                </div>
+              </div>
+            </div>
           </div>
 
           {/* Supported Methods Card */}
           <div className="p-6 rounded-3xl bg-card border border-border space-y-4 shadow-xs">
             <h4 className="font-bold text-sm text-foreground flex items-center gap-2">
-              <Wallet className="h-4 w-4 text-indigo-500" />
-              Customer Payment Methods
+              <Wallet className="h-4 w-4 text-emerald-500" />
+              Supported Payment Rails
             </h4>
-            <p className="text-xs text-muted-foreground">
-              PipraPay aggregates multiple regional and international rails:
-            </p>
 
             <div className="grid grid-cols-2 gap-2 text-xs font-medium">
               <div className="p-3 rounded-2xl bg-secondary/40 border border-border flex items-center gap-2">
                 <CreditCard className="h-4 w-4 text-emerald-500" />
-                <span>Visa / Mastercard</span>
+                <span>Visa / MC</span>
               </div>
               <div className="p-3 rounded-2xl bg-secondary/40 border border-border flex items-center gap-2">
                 <Wallet className="h-4 w-4 text-pink-500" />
@@ -676,30 +792,22 @@ export default function AdminPipraPaySettingsPage() {
                 <Building className="h-4 w-4 text-indigo-500" />
                 <span>Rocket / DBBL</span>
               </div>
-              <div className="p-3 rounded-2xl bg-secondary/40 border border-border flex items-center gap-2">
-                <Globe className="h-4 w-4 text-blue-500" />
-                <span>Net Banking</span>
-              </div>
-              <div className="p-3 rounded-2xl bg-secondary/40 border border-border flex items-center gap-2">
-                <Zap className="h-4 w-4 text-purple-500" />
-                <span>UnionPay & Amex</span>
-              </div>
             </div>
           </div>
 
-          {/* Merchant Support Card */}
+          {/* Official Documentation Link */}
           <div className="p-5 rounded-3xl bg-secondary/30 border border-border text-xs space-y-2">
-            <div className="font-bold text-foreground">Need PipraPay Merchant Account?</div>
+            <div className="font-bold text-foreground">PipraPay Documentation</div>
             <p className="text-muted-foreground text-[11px]">
-              Sign up on the official PipraPay portal to generate your production API keys and start accepting online payments worldwide.
+              Learn more about payment charges, redirect checkout, and webhook verification on the official developer hub.
             </p>
             <a
-              href="https://piprapay.com"
+              href="https://docs.piprapay.com/reference/overview"
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 text-indigo-500 hover:text-indigo-600 font-semibold pt-1"
+              className="inline-flex items-center gap-1.5 text-emerald-500 hover:text-emerald-600 font-semibold pt-1"
             >
-              Visit PipraPay Portal
+              Open PipraPay Developer Docs
               <ExternalLink className="h-3.5 w-3.5" />
             </a>
           </div>
