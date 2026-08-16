@@ -56,11 +56,7 @@ export class CategoriesController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
   async getAdminCategories() {
-    const data = await this.categoriesService.getAllAdminCategories();
-    return {
-      success: true,
-      data,
-    };
+    return this.categoriesService.getAllAdminCategories();
   }
 
   @Post('admin/categories')
@@ -72,12 +68,7 @@ export class CategoriesController {
     @CurrentUser() user: any,
   ) {
     const actorEmail = user?.email || 'admin@licensenest.internal';
-    const data = await this.categoriesService.createCategory(dto, actorEmail);
-    return {
-      success: true,
-      message: 'Category created successfully',
-      data,
-    };
+    return this.categoriesService.createCategory(dto, actorEmail);
   }
 
   @Patch('admin/categories/:id')
@@ -90,12 +81,7 @@ export class CategoriesController {
     @CurrentUser() user: any,
   ) {
     const actorEmail = user?.email || 'admin@licensenest.internal';
-    const data = await this.categoriesService.updateCategory(id, dto, actorEmail);
-    return {
-      success: true,
-      message: 'Category updated successfully',
-      data,
-    };
+    return this.categoriesService.updateCategory(id, dto, actorEmail);
   }
 
   @Delete('admin/categories/:id')
@@ -107,12 +93,7 @@ export class CategoriesController {
     @CurrentUser() user: any,
   ) {
     const actorEmail = user?.email || 'admin@licensenest.internal';
-    const data = await this.categoriesService.deleteCategory(id, actorEmail);
-    return {
-      success: true,
-      message: 'Category deleted successfully',
-      data,
-    };
+    return this.categoriesService.deleteCategory(id, actorEmail);
   }
 
   // ---------------- ADMIN TAG ROUTES ----------------
@@ -121,11 +102,7 @@ export class CategoriesController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
   async getAdminTags() {
-    const data = await this.categoriesService.getAllAdminTags();
-    return {
-      success: true,
-      data,
-    };
+    return this.categoriesService.getAllAdminTags();
   }
 
   @Post('admin/tags')
@@ -137,12 +114,7 @@ export class CategoriesController {
     @CurrentUser() user: any,
   ) {
     const actorEmail = user?.email || 'admin@licensenest.internal';
-    const data = await this.categoriesService.createTag(dto, actorEmail);
-    return {
-      success: true,
-      message: 'Tag created successfully',
-      data,
-    };
+    return this.categoriesService.createTag(dto, actorEmail);
   }
 
   @Delete('admin/tags/:id')
@@ -154,12 +126,7 @@ export class CategoriesController {
     @CurrentUser() user: any,
   ) {
     const actorEmail = user?.email || 'admin@licensenest.internal';
-    const data = await this.categoriesService.deleteTag(id, actorEmail);
-    return {
-      success: true,
-      message: 'Tag deleted successfully',
-      data,
-    };
+    return this.categoriesService.deleteTag(id, actorEmail);
   }
 
   @Post('admin/categories/recalculate-counts')
@@ -168,9 +135,6 @@ export class CategoriesController {
   @HttpCode(HttpStatus.OK)
   async recalculateCounts() {
     await this.categoriesService.recalculateProductCounts();
-    return {
-      success: true,
-      message: 'Product counts recalculated successfully',
-    };
+    return { success: true };
   }
 }

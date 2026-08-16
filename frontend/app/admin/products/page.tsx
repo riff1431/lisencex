@@ -321,9 +321,12 @@ export default function AdminProductsPage() {
           apiRequest('/admin/categories'),
           apiRequest('/admin/tags'),
         ]);
-        setAvailablePlans(plansRes.data || []);
-        setAvailableCategories(catsRes.data || []);
-        setAvailableTags(tagsRes.data || []);
+        const plansList = Array.isArray(plansRes.data) ? plansRes.data : (plansRes.data?.data || []);
+        const catsList = Array.isArray(catsRes.data) ? catsRes.data : (catsRes.data?.data || []);
+        const tagsList = Array.isArray(tagsRes.data) ? tagsRes.data : (tagsRes.data?.data || []);
+        setAvailablePlans(Array.isArray(plansList) ? plansList : []);
+        setAvailableCategories(Array.isArray(catsList) ? catsList : []);
+        setAvailableTags(Array.isArray(tagsList) ? tagsList : []);
       } catch (err) {
         console.error('Failed to fetch plans/categories/tags', err);
       }
@@ -886,7 +889,7 @@ export default function AdminProductsPage() {
                               <span>{prod.slug}</span>
                               {prod.primaryCategoryId && (
                                 <span className="px-1.5 py-0.2 rounded text-[10px] bg-secondary text-foreground font-semibold">
-                                  📁 {availableCategories.find((c) => c._id === (prod.primaryCategoryId?._id || prod.primaryCategoryId))?.name || 'Category'}
+                                  📁 {(Array.isArray(availableCategories) ? availableCategories : []).find((c) => c._id === (prod.primaryCategoryId?._id || prod.primaryCategoryId))?.name || 'Category'}
                                 </span>
                               )}
                             </div>
@@ -894,12 +897,12 @@ export default function AdminProductsPage() {
                               <div className="flex gap-1.5 mt-1 items-center flex-wrap">
                                 {prod.defaultLicensePlanId && (
                                   <span className="px-1.5 py-0.5 rounded-sm bg-indigo-500/10 text-indigo-500 text-[10px] font-bold">
-                                    Own Plan: {availablePlans.find((p: any) => p._id === prod.defaultLicensePlanId)?.name || 'Assigned'}
+                                    Own Plan: {(Array.isArray(availablePlans) ? availablePlans : []).find((p: any) => p._id === prod.defaultLicensePlanId)?.name || 'Assigned'}
                                   </span>
                                 )}
                                 {prod.envatoLicensePlanId && (
                                   <span className="px-1.5 py-0.5 rounded-sm bg-emerald-500/10 text-emerald-500 text-[10px] font-bold">
-                                    Envato Plan: {availablePlans.find((p: any) => p._id === prod.envatoLicensePlanId)?.name || 'Assigned'}
+                                    Envato Plan: {(Array.isArray(availablePlans) ? availablePlans : []).find((p: any) => p._id === prod.envatoLicensePlanId)?.name || 'Assigned'}
                                   </span>
                                 )}
                               </div>
@@ -1239,7 +1242,7 @@ export default function AdminProductsPage() {
                           className="w-full px-3 py-2 rounded-xl border border-border bg-background text-xs font-semibold"
                         >
                           <option value="">-- Select Primary Category --</option>
-                          {availableCategories.map((cat) => (
+                          {(availableCategories || []).map((cat) => (
                             <option key={cat._id} value={cat._id}>
                               {cat.parentId ? `↳ ${cat.name}` : cat.name}
                             </option>
@@ -1306,7 +1309,7 @@ export default function AdminProductsPage() {
                     <div>
                       <label className="font-semibold text-foreground block mb-1.5">Product Tags</label>
                       <div className="flex flex-wrap gap-1.5">
-                        {availableTags.map((tag) => {
+                        {(availableTags || []).map((tag) => {
                           const isSelected = productForm.tags?.includes(tag.slug);
                           return (
                             <button
@@ -1600,7 +1603,7 @@ export default function AdminProductsPage() {
                             className="w-full px-3 py-2 rounded-xl border border-border bg-background text-xs"
                           >
                             <option value="">None (use product defaults)</option>
-                            {availablePlans.map((p: any) => (
+                            {(availablePlans || []).map((p: any) => (
                               <option key={p._id} value={p._id}>
                                 {p.name} — {p.activationLimit === 0 ? 'Unlimited' : `${p.activationLimit} Sites`}
                                 {p.licenseDurationDays === 0 ? ' / Lifetime' : ` / ${p.licenseDurationDays}d`}
@@ -1619,7 +1622,7 @@ export default function AdminProductsPage() {
                             className="w-full px-3 py-2 rounded-xl border border-border bg-background text-xs"
                           >
                             <option value="">None (use product defaults)</option>
-                            {availablePlans.map((p: any) => (
+                            {(availablePlans || []).map((p: any) => (
                               <option key={p._id} value={p._id}>
                                 {p.name} — {p.activationLimit === 0 ? 'Unlimited' : `${p.activationLimit} Sites`}
                                 {p.licenseDurationDays === 0 ? ' / Lifetime' : ` / ${p.licenseDurationDays}d`}
