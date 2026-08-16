@@ -8,11 +8,12 @@ import {
   Param,
   Query,
   UseGuards,
+  Req,
   Res,
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
-import { type Response } from 'express';
+import { type Request, type Response } from 'express';
 import { StorageService } from './storage.service';
 import { StorageProviderType } from '../../database/schemas/storage-config.schema';
 import { FileCategory, FileVisibility } from '../../database/schemas/stored-file.schema';
@@ -134,12 +135,12 @@ export class StorageController {
     @Param('fileId') fileId: string,
     @Res() res: Response,
   ) {
-    const { buffer, file } = await this.storageService.getFileBuffer(fileId);
+    const { buffer, mimeType, filename } = await this.storageService.getFileBuffer(fileId);
 
-    res.setHeader('Content-Type', file.mimeType || 'application/octet-stream');
+    res.setHeader('Content-Type', mimeType || 'application/octet-stream');
     res.setHeader(
       'Content-Disposition',
-      `attachment; filename="${encodeURIComponent(file.originalFilename)}"`,
+      `attachment; filename="${encodeURIComponent(filename || 'download')}"`,
     );
     res.setHeader('Content-Length', buffer.length);
     res.send(buffer);
@@ -150,9 +151,35 @@ export class StorageController {
     @Param('fileId') fileId: string,
     @Res() res: Response,
   ) {
-    const { buffer, file } = await this.storageService.getFileBuffer(fileId);
+    const { buffer, mimeType } = await this.storageService.getFileBuffer(fileId);
 
-    res.setHeader('Content-Type', file.mimeType || 'application/octet-stream');
+    res.setHeader('Content-Type', mimeType || 'application/octet-stream');
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    res.send(buffer);
+  }
+
+  @Get('public/media/:filename')
+  async servePublicMedia(
+    @Param('filename') filename: string,
+    @Res() res: Response,
+  ) {
+    const { buffer, mimeType } = await this.storageService.getFileBuffer(filename);
+
+    res.setHeader('Content-Type', mimeType || 'application/octet-stream');
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    res.send(buffer);
+  }
+
+  @Get('public/media/*')
+  async serveWildcardPublicMedia(
+    @Req() req: Request,
+    @Res() res: Response,
+  ) {
+    const pathPart = req.params[0] || (req.url.split('/public/media/')[1] || '');
+    const cleanPath = decodeURIComponent(pathPart.split('?')[0]);
+    const { buffer, mimeType } = await this.storageService.getFileBuffer(cleanPath);
+
+    res.setHeader('Content-Type', mimeType || 'application/octet-stream');
     res.setHeader('Cache-Control', 'public, max-age=86400');
     res.send(buffer);
   }

@@ -22,10 +22,13 @@ import {
   FileCategory,
 } from '../../database/schemas/stored-file.schema';
 import { AuditLog, AuditLogDocument } from '../../database/schemas/audit-log.schema';
+import { Media, MediaDocument } from '../../database/schemas/media.schema';
 import { StorageProvider } from './providers/storage-provider.interface';
 import { LocalStorageProvider } from './providers/local-storage.provider';
 import { S3StorageProvider } from './providers/s3-storage.provider';
 import { R2StorageProvider } from './providers/r2-storage.provider';
+import { existsSync, readFileSync } from 'fs';
+import { join } from 'path';
 
 @Injectable()
 export class StorageService implements OnModuleInit {
@@ -44,6 +47,8 @@ export class StorageService implements OnModuleInit {
     private readonly fileModel: Model<StoredFileDocument>,
     @InjectModel(AuditLog.name)
     private readonly auditLogModel: Model<AuditLogDocument>,
+    @InjectModel(Media.name)
+    private readonly mediaModel: Model<MediaDocument>,
   ) {
     const rawSecret = process.env.ACTIVATION_SECRET || process.env.JWT_SECRET || 'licensenest_storage_encryption_secret_32b';
     this.encryptionKey = crypto.createHash('sha256').update(rawSecret).digest();
@@ -352,21 +357,82 @@ export class StorageService implements OnModuleInit {
   }
 
   /**
-   * Get Raw File Buffer
+   * Get Raw File Buffer with multi-strategy resolution
    */
-  async getFileBuffer(fileIdOrPath: string): Promise<{ buffer: Buffer; file: StoredFileDocument }> {
+  async getFileBuffer(fileIdOrPath: string): Promise<{ buffer: Buffer; file?: StoredFileDocument; mimeType: string; filename: string }> {
+    const cleanId = decodeURIComponent(fileIdOrPath).replace(/^(\.\.[\/\\])+/, '');
+
+    // 1. Check StoredFile schema
     const file = await this.fileModel.findOne({
-      $or: [{ fileId: fileIdOrPath }, { path: fileIdOrPath }, { generatedFilename: fileIdOrPath }],
+      $or: [
+        { fileId: cleanId },
+        { path: cleanId },
+        { generatedFilename: cleanId },
+        { originalFilename: cleanId },
+        { path: { $regex: new RegExp(cleanId.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&') + '$', 'i') } },
+      ],
     });
 
-    if (!file) {
-      throw new NotFoundException('Requested file not found');
+    if (file) {
+      const provider = this.getProviderInstance(file.storageProvider);
+      const buffer = await provider.download(file.path);
+      return {
+        buffer,
+        file,
+        mimeType: file.mimeType || 'application/octet-stream',
+        filename: file.originalFilename || file.generatedFilename,
+      };
     }
 
-    const provider = this.getProviderInstance(file.storageProvider);
-    const buffer = await provider.download(file.path);
+    // 2. Check Media schema
+    const media = await this.mediaModel.findOne({
+      $or: [
+        { mediaId: cleanId },
+        { fileName: cleanId },
+        { storageKey: cleanId },
+        { originalName: cleanId },
+        { storageKey: { $regex: new RegExp(cleanId.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&') + '$', 'i') } },
+      ],
+    });
 
-    return { buffer, file };
+    if (media) {
+      const provider = this.getProviderInstance(media.storageProvider as StorageProviderType);
+      const buffer = await provider.download(media.storageKey);
+      return {
+        buffer,
+        file: null as any,
+        mimeType: media.mimeType || 'application/octet-stream',
+        filename: media.originalName || media.fileName,
+      };
+    }
+
+    // 3. Fallback: Search local uploads folder directly
+    const localUploadsDir = join(process.cwd(), 'uploads');
+    const directPath = join(localUploadsDir, cleanId);
+    if (existsSync(directPath)) {
+      const buffer = readFileSync(directPath);
+      const ext = extname(cleanId).toLowerCase();
+      const mimeMap: Record<string, string> = {
+        '.png': 'image/png',
+        '.jpg': 'image/jpeg',
+        '.jpeg': 'image/jpeg',
+        '.webp': 'image/webp',
+        '.gif': 'image/gif',
+        '.svg': 'image/svg+xml',
+        '.pdf': 'application/pdf',
+        '.zip': 'application/zip',
+        '.mp4': 'video/mp4',
+        '.mp3': 'audio/mpeg',
+      };
+      return {
+        buffer,
+        file: null as any,
+        mimeType: mimeMap[ext] || 'application/octet-stream',
+        filename: basename(cleanId),
+      };
+    }
+
+    throw new NotFoundException(`Requested file '${cleanId}' not found`);
   }
 
   /**

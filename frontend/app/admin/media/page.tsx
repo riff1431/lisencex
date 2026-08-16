@@ -703,6 +703,16 @@ export default function AdminMediaLibraryPage() {
                       src={item.publicUrl || `http://localhost:5001/api/v1/public/storage/serve/${item.mediaId}`}
                       alt={item.title || item.originalName}
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                      onError={(e) => {
+                        const target = e.currentTarget;
+                        if (!target.dataset.triedFallback) {
+                          target.dataset.triedFallback = '1';
+                          target.src = `http://localhost:5001/api/v1/public/media/${encodeURIComponent(item.fileName || item.mediaId)}`;
+                        } else if (target.dataset.triedFallback === '1') {
+                          target.dataset.triedFallback = '2';
+                          target.src = `http://localhost:5001/api/v1/public/storage/serve/${encodeURIComponent(item.mediaId)}`;
+                        }
+                      }}
                     />
                   ) : isZip ? (
                     <div className="flex flex-col items-center gap-1 p-2 text-center">
@@ -798,6 +808,13 @@ export default function AdminMediaLibraryPage() {
                               src={item.publicUrl || `http://localhost:5001/api/v1/public/storage/serve/${item.mediaId}`}
                               alt={item.title}
                               className="w-full h-full object-cover"
+                              onError={(e) => {
+                                const target = e.currentTarget;
+                                if (!target.dataset.triedFallback) {
+                                  target.dataset.triedFallback = '1';
+                                  target.src = `http://localhost:5001/api/v1/public/media/${encodeURIComponent(item.fileName || item.mediaId)}`;
+                                }
+                              }}
                             />
                           ) : (
                             <FileCode className="h-5 w-5 text-indigo-500" />
@@ -933,6 +950,13 @@ export default function AdminMediaLibraryPage() {
                       src={inspectingMedia.publicUrl || `http://localhost:5001/api/v1/public/storage/serve/${inspectingMedia.mediaId}`}
                       alt={inspectingMedia.title}
                       className="w-full h-full object-contain"
+                      onError={(e) => {
+                        const target = e.currentTarget;
+                        if (!target.dataset.triedFallback) {
+                          target.dataset.triedFallback = '1';
+                          target.src = `http://localhost:5001/api/v1/public/media/${encodeURIComponent(inspectingMedia.fileName || inspectingMedia.mediaId)}`;
+                        }
+                      }}
                     />
                   ) : (
                     <FileCode className="h-16 w-16 text-indigo-500" />

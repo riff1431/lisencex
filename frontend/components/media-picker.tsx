@@ -326,6 +326,13 @@ export function MediaPicker({
                               src={item.publicUrl || `http://localhost:5001/api/v1/public/storage/serve/${item.mediaId}`}
                               alt={item.title || item.originalName}
                               className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                              onError={(e) => {
+                                const target = e.currentTarget;
+                                if (!target.dataset.triedFallback) {
+                                  target.dataset.triedFallback = '1';
+                                  target.src = `http://localhost:5001/api/v1/public/media/${encodeURIComponent(item.fileName || item.mediaId)}`;
+                                }
+                              }}
                             />
                           ) : isZip ? (
                             <div className="flex flex-col items-center gap-1 p-2 text-center">
@@ -378,6 +385,13 @@ export function MediaPicker({
                     {selectedItem.mimeType?.startsWith('image/') ? (
                       <img
                         src={selectedItem.publicUrl || `http://localhost:5001/api/v1/public/storage/serve/${selectedItem.mediaId}`}
+                        onError={(e) => {
+                          const target = e.currentTarget;
+                          if (!target.dataset.triedFallback) {
+                            target.dataset.triedFallback = '1';
+                            target.src = `http://localhost:5001/api/v1/public/media/${encodeURIComponent(selectedItem.fileName || selectedItem.mediaId)}`;
+                          }
+                        }}
                         alt={selectedItem.title}
                         className="w-full h-full object-contain"
                       />

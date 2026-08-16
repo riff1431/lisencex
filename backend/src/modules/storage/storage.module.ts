@@ -12,6 +12,10 @@ import {
   AuditLog,
   AuditLogSchema,
 } from '../../database/schemas/audit-log.schema';
+import {
+  Media,
+  MediaSchema,
+} from '../../database/schemas/media.schema';
 import { StorageService } from './storage.service';
 import { StorageController } from './storage.controller';
 
@@ -22,6 +26,7 @@ import { StorageController } from './storage.controller';
       { name: StorageConfig.name, schema: StorageConfigSchema },
       { name: StoredFile.name, schema: StoredFileSchema },
       { name: AuditLog.name, schema: AuditLogSchema },
+      { name: Media.name, schema: MediaSchema },
     ]),
   ],
   controllers: [StorageController],
