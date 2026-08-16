@@ -116,7 +116,12 @@ export class OrdersController {
   // ─── PUBLIC STORE ROUTES ─────────────────────────────────────────
 
   @Get('public/store/products')
-  async getStoreProducts(@Query() query: any) {
-    return this.ordersService.findAll(query); // placeholder - we'll use products service
+  async getPublicProducts(@Query() query: any) {
+    return this.ordersService.findAll(query);
+  }
+
+  @Get('public/orders/status/:orderNumber')
+  async getOrderStatus(@Param('orderNumber') orderNumber: string) {
+    return this.ordersService.getOrderStatusWithLicenses(orderNumber);
   }
 }

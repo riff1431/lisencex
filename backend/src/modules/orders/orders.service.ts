@@ -437,4 +437,38 @@ export class OrdersService {
 
     return order;
   }
+
+  /**
+   * Public Order Status & License Details Query (for Post-Checkout Success Page)
+   */
+  async getOrderStatusWithLicenses(orderNumber: string) {
+    const order = await this.orderModel.findOne({ orderNumber }).lean();
+    if (!order) {
+      throw new NotFoundException(`Order #${orderNumber} not found`);
+    }
+
+    // Fetch associated licenses
+    const licenseIds = (order.items || [])
+      .map((item: any) => item.licenseId)
+      .filter(Boolean);
+
+    let licenses: any[] = [];
+    if (licenseIds.length > 0) {
+      licenses = await this.licenseModel.find({ _id: { $in: licenseIds } }).lean();
+    } else {
+      // Also lookup purchases by orderNumber
+      const purchases = await this.purchaseModel.find({ orderNumber }).lean();
+      const purchaseIds = purchases.map((p) => p._id);
+      if (purchaseIds.length > 0) {
+        licenses = await this.licenseModel.find({ purchaseId: { $in: purchaseIds } }).lean();
+      }
+    }
+
+    return {
+      order,
+      licenses,
+      fulfillmentCount: licenses.length,
+    };
+  }
 }
+
