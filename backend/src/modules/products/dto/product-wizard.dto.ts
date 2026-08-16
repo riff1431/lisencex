@@ -135,6 +135,36 @@ export class RegisterProductWizardDto {
   marketplaceSource?: MarketplaceSource;
 
   @IsOptional()
+  @IsString()
+  primaryCategoryId?: string;
+
+  @IsOptional()
+  categoryIds?: string[];
+
+  @IsOptional()
+  tags?: string[];
+
+  @IsOptional()
+  @IsBoolean()
+  isFeatured?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  isPopular?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  isNewRelease?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  isBestSeller?: boolean;
+
+  @IsOptional()
+  @IsString()
+  badgeLabel?: string;
+
+  @IsOptional()
   @ValidateNested()
   @Type(() => WizardLicenseSettingsDto)
   licenseSettings?: WizardLicenseSettingsDto;

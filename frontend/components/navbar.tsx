@@ -14,12 +14,16 @@ import {
   X,
   Settings,
   BookOpen,
+  ShoppingBag,
+  ShoppingCart,
 } from 'lucide-react';
 import { useState } from 'react';
 import { NotificationBell } from '@/components/notification-bell';
+import { useCart } from '@/lib/cart-context';
 
 export function Navbar() {
   const { user, logout, isAdmin } = useAuth();
+  const { cartCount } = useCart();
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -39,6 +43,17 @@ export function Navbar() {
 
           {/* Desktop Links */}
           <nav className="hidden md:flex items-center gap-1">
+            <Link
+              href="/store"
+              className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-colors flex items-center gap-1.5 ${
+                pathname.startsWith('/store')
+                  ? 'bg-indigo-500/10 text-indigo-500 font-semibold'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-secondary/50'
+              }`}
+            >
+              <ShoppingBag className="h-4 w-4" />
+              Store
+            </Link>
             <Link
               href="/"
               className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${
@@ -76,6 +91,19 @@ export function Navbar() {
 
         {/* Right Actions */}
         <div className="flex items-center gap-3">
+          {/* Cart Button */}
+          <Link
+            href="/cart"
+            className="relative flex h-9 w-9 items-center justify-center rounded-xl border border-border bg-secondary/40 text-foreground hover:bg-secondary transition-colors"
+            title="Shopping Cart"
+          >
+            <ShoppingCart className="h-4 w-4" />
+            {cartCount > 0 && (
+              <span className="absolute -top-1.5 -right-1.5 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-indigo-600 px-1 text-[10px] font-bold text-white shadow-xs animate-in zoom-in-50">
+                {cartCount}
+              </span>
+            )}
+          </Link>
           {user ? (
             <div className="flex items-center gap-2">
               {isAdmin && (

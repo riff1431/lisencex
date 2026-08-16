@@ -83,11 +83,30 @@ export class License {
 
   @Prop({ type: Boolean, default: false })
   isArchived: boolean;
+
+  @Prop({ type: Boolean, default: false, index: true })
+  isSandbox: boolean;
+
+  @Prop({ type: String, default: null })
+  revocationReason?: string;
+
+  @Prop({ type: Date, default: null })
+  revokedAt?: Date;
+
+  @Prop({ type: String, default: null })
+  suspendedReason?: string;
+
+  @Prop({ type: Date, default: null })
+  suspendedAt?: Date;
+
+  @Prop({ type: Boolean, default: false, index: true })
+  isCriticalRevoked: boolean;
 }
 
 export const LicenseSchema = SchemaFactory.createForClass(License);
 
 LicenseSchema.index({ userId: 1 });
+LicenseSchema.index({ isSandbox: 1 });
 LicenseSchema.index({ productId: 1 });
 LicenseSchema.index({ status: 1 });
 LicenseSchema.index({ expiresAt: 1 });

@@ -27,6 +27,7 @@ import {
   Store,
   Building2,
   Trash2,
+  RotateCcw,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { apiRequest } from '@/lib/api';
@@ -103,6 +104,18 @@ export default function AdminLicensesPage() {
   const [showInspectorModal, setShowInspectorModal] = useState(false);
   const [detailedLicense, setDetailedLicense] = useState<any>(null);
   const [loadingDetails, setLoadingDetails] = useState(false);
+
+  // Recovery Modal State
+  const [showRecoveryModal, setShowRecoveryModal] = useState(false);
+  const [recoveryTargetActivation, setRecoveryTargetActivation] = useState<any>(null);
+  const [recoveryForm, setRecoveryForm] = useState({
+    newDomain: '',
+    newInstallationId: '',
+    newInstallationUrl: '',
+    reason: 'hosting_server_lost',
+    reasonDetail: '',
+  });
+  const [recoveryLoading, setRecoveryLoading] = useState(false);
 
   const fetchLicenses = async () => {
     setLoading(true);
@@ -324,6 +337,46 @@ export default function AdminLicensesPage() {
       setDetailedLicense(lic);
     } finally {
       setLoadingDetails(false);
+    }
+  };
+
+  const handleExecuteRecovery = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!recoveryTargetActivation || !selectedLicense) return;
+    setRecoveryLoading(true);
+
+    try {
+      await apiRequest('/admin/licenses/recoveries/manual', {
+        method: 'POST',
+        body: JSON.stringify({
+          licenseId: selectedLicense._id,
+          oldActivationId: recoveryTargetActivation.activationId,
+          newDomain: recoveryForm.newDomain,
+          newInstallationId: recoveryForm.newInstallationId,
+          newInstallationUrl: recoveryForm.newInstallationUrl,
+          reason: recoveryForm.reason,
+          reasonDetail: recoveryForm.reasonDetail,
+        }),
+      });
+
+      alert('Activation successfully recovered and replaced.');
+      setShowRecoveryModal(false);
+      setRecoveryTargetActivation(null);
+      setRecoveryForm({
+        newDomain: '',
+        newInstallationId: '',
+        newInstallationUrl: '',
+        reason: 'hosting_server_lost',
+        reasonDetail: '',
+      });
+
+      const res = await apiRequest(`/admin/licenses/${selectedLicense._id}`);
+      setDetailedLicense(res.data);
+      fetchLicenses();
+    } catch (err: any) {
+      alert(err.message || 'Manual recovery failed');
+    } finally {
+      setRecoveryLoading(false);
     }
   };
 
@@ -1451,6 +1504,63 @@ export default function AdminLicensesPage() {
                               <div>Activated: {new Date(act.activatedAt).toLocaleDateString()}</div>
                             </div>
                           </div>
+                          {act.status === 'active' && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                setRecoveryTargetActivation(act);
+                                setShowRecoveryModal(true);
+                              }}
+                              className="h-7 px-2.5 text-[10px] font-bold gap-1 text-amber-500 border-amber-500/20 hover:bg-amber-500 hover:text-white"
+                            >
+                              <RotateCcw className="h-3 w-3" /> Recover
+                            </Button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Detailed Recovery History List */}
+                <div className="space-y-3">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                    <RotateCcw className="h-4 w-4 text-indigo-500" />
+                    License Recovery History ({detailedLicense?.recoveries?.length || 0})
+                  </h3>
+
+                  {!detailedLicense?.recoveries || detailedLicense.recoveries.length === 0 ? (
+                    <div className="p-8 text-center rounded-2xl border border-dashed border-border text-xs text-muted-foreground bg-secondary/10">
+                      No recoveries logged for this license.
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-border/60 rounded-2xl border border-border overflow-hidden bg-background">
+                      {detailedLicense.recoveries.map((rec: any) => (
+                        <div key={rec._id} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-foreground text-sm">{rec.oldDomain}</span>
+                              <ArrowRight className="h-3.5 w-3.5 text-muted-foreground" />
+                              <span className="font-bold text-indigo-500 text-sm">{rec.newDomain}</span>
+                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                                rec.status === 'approved' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-destructive/10 text-destructive'
+                              }`}>
+                                {rec.status}
+                              </span>
+                            </div>
+                            <div className="grid grid-cols-2 gap-x-4 text-[10px] text-muted-foreground font-mono">
+                              <div>Reason: {rec.reason?.replace(/_/g, ' ')}</div>
+                              <div>Requester: {rec.requesterEmail}</div>
+                              <div>Approver: {rec.approverEmail || 'N/A'}</div>
+                              <div>Resolved: {new Date(rec.resolvedAt || rec.createdAt).toLocaleDateString()}</div>
+                            </div>
+                            {rec.reasonDetail && (
+                              <p className="text-[11px] text-muted-foreground italic mt-1 bg-secondary/20 p-2 rounded-lg">
+                                "{rec.reasonDetail}"
+                              </p>
+                            )}
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -1492,6 +1602,99 @@ export default function AdminLicensesPage() {
               </Button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* MANUAL RECOVERY MODAL */}
+      {showRecoveryModal && recoveryTargetActivation && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <form onSubmit={handleExecuteRecovery} className="w-full max-w-md rounded-3xl border border-border bg-card shadow-2xl p-6 space-y-4">
+            <h3 className="text-base font-black tracking-tight text-foreground flex items-center gap-2">
+              <RotateCcw className="h-5 w-5 text-indigo-500" />
+              Perform Manual Recovery
+            </h3>
+            <p className="text-xs text-muted-foreground">
+              Directly recovery/replace activation <strong>{recoveryTargetActivation.domain}</strong> on this license.
+            </p>
+
+            <div className="space-y-3 text-xs">
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold uppercase text-muted-foreground">New Domain</label>
+                <input
+                  required
+                  type="text"
+                  placeholder="new-site.com"
+                  value={recoveryForm.newDomain}
+                  onChange={(e) => setRecoveryForm(p => ({ ...p, newDomain: e.target.value }))}
+                  className="w-full p-2.5 rounded-xl border border-border bg-background"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold uppercase text-muted-foreground">New Installation ID</label>
+                <input
+                  required
+                  type="text"
+                  placeholder="ins_XXXXX"
+                  value={recoveryForm.newInstallationId}
+                  onChange={(e) => setRecoveryForm(p => ({ ...p, newInstallationId: e.target.value }))}
+                  className="w-full p-2.5 rounded-xl border border-border bg-background font-mono"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold uppercase text-muted-foreground">New Installation URL</label>
+                <input
+                  type="text"
+                  placeholder="https://new-site.com"
+                  value={recoveryForm.newInstallationUrl}
+                  onChange={(e) => setRecoveryForm(p => ({ ...p, newInstallationUrl: e.target.value }))}
+                  className="w-full p-2.5 rounded-xl border border-border bg-background"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold uppercase text-muted-foreground">Recovery Reason</label>
+                <select
+                  value={recoveryForm.reason}
+                  onChange={(e) => setRecoveryForm(p => ({ ...p, reason: e.target.value }))}
+                  className="w-full p-2.5 rounded-xl border border-border bg-background font-semibold"
+                >
+                  <option value="hosting_server_lost">Hosting / Server Lost</option>
+                  <option value="domain_expired">Domain Expired</option>
+                  <option value="website_deleted">Website Deleted</option>
+                  <option value="wordpress_reinstalled">WordPress Reinstalled</option>
+                  <option value="nextjs_deployment_replaced">Next.js Deployment Replaced</option>
+                  <option value="php_script_moved">PHP Script Moved</option>
+                  <option value="other">Other (Custom Reason)</option>
+                </select>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold uppercase text-muted-foreground">Additional Detail (Notes)</label>
+                <textarea
+                  rows={2}
+                  placeholder="Detail on recovery reason..."
+                  value={recoveryForm.reasonDetail}
+                  onChange={(e) => setRecoveryForm(p => ({ ...p, reasonDetail: e.target.value }))}
+                  className="w-full p-2.5 rounded-xl border border-border bg-background"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 text-xs pt-2">
+              <Button type="button" variant="outline" onClick={() => { setShowRecoveryModal(false); setRecoveryTargetActivation(null); }}>
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={recoveryLoading}
+                className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold"
+              >
+                {recoveryLoading ? 'Recovering...' : 'Perform Recovery'}
+              </Button>
+            </div>
+          </form>
         </div>
       )}
     </div>

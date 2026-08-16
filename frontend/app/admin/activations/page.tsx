@@ -32,6 +32,7 @@ export default function AdminActivationsPage() {
   const [search, setSearch] = useState('');
   const [envFilter, setEnvFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [healthFilter, setHealthFilter] = useState('all');
   const [loading, setLoading] = useState(true);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
@@ -50,11 +51,14 @@ export default function AdminActivationsPage() {
   const [actionKind, setActionKind] = useState<'deactivate' | 'suspend' | 'revoke'>('deactivate');
   const [actionReason, setActionReason] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
+  const [revalidatingId, setRevalidatingId] = useState<string | null>(null);
 
   const fetchActivations = async () => {
     setLoading(true);
     try {
-      const res = await apiRequest(`/admin/activations?search=${encodeURIComponent(search)}`);
+      const res = await apiRequest(
+        `/admin/activations?search=${encodeURIComponent(search)}&healthStatus=${healthFilter}`
+      );
       setActivations(res.data?.items || []);
     } catch (err) {
       console.error(err);
@@ -65,7 +69,7 @@ export default function AdminActivationsPage() {
 
   useEffect(() => {
     fetchActivations();
-  }, [search]);
+  }, [search, healthFilter]);
 
   const handleCopy = (text: string) => {
     navigator.clipboard.writeText(text);
@@ -176,6 +180,20 @@ export default function AdminActivationsPage() {
             <option value="suspended">Suspended</option>
             <option value="revoked">Revoked</option>
           </select>
+
+          <select
+            value={healthFilter}
+            onChange={(e) => setHealthFilter(e.target.value)}
+            className="w-full sm:w-auto px-3 py-2 rounded-xl border border-border bg-card text-xs font-semibold"
+          >
+            <option value="all">All Health States</option>
+            <option value="Healthy">Healthy</option>
+            <option value="Validation Overdue">Validation Overdue</option>
+            <option value="Offline">Offline</option>
+            <option value="Outdated">Outdated</option>
+            <option value="Suspended">Suspended</option>
+            <option value="Revoked">Revoked</option>
+          </select>
         </div>
       </div>
 
@@ -191,19 +209,20 @@ export default function AdminActivationsPage() {
                 <th className="px-6 py-4">Environment</th>
                 <th className="px-6 py-4">IP / Heartbeat</th>
                 <th className="px-6 py-4">Status</th>
+                <th className="px-6 py-4">Health</th>
                 <th className="px-6 py-4 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border/60">
               {loading ? (
                 <tr>
-                  <td colSpan={7} className="px-6 py-8 text-center text-muted-foreground text-xs">
+                  <td colSpan={8} className="px-6 py-8 text-center text-muted-foreground text-xs">
                     Loading live activations...
                   </td>
                 </tr>
               ) : filteredActivations.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-6 py-8 text-center text-muted-foreground text-xs">
+                  <td colSpan={8} className="px-6 py-8 text-center text-muted-foreground text-xs">
                     No active installations found matching criteria.
                   </td>
                 </tr>
@@ -217,6 +236,11 @@ export default function AdminActivationsPage() {
                     <tr key={act._id} className="hover:bg-secondary/20 transition-colors">
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-1.5 font-bold text-foreground text-xs">
+                          {act.flaggedForReview && (
+                            <span title="Flagged: Validation Overdue / Offline">
+                              <AlertCircle className="h-3.5 w-3.5 text-rose-500 animate-bounce" />
+                            </span>
+                          )}
                           <span>{act.domain}</span>
                           {act.installationUrl && (
                             <a
@@ -285,6 +309,30 @@ export default function AdminActivationsPage() {
                           {act.status}
                         </span>
                       </td>
+                      <td className="px-6 py-4">
+                        <span
+                          className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                            act.healthStatus === 'Healthy'
+                              ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20'
+                              : act.healthStatus === 'Validation Overdue'
+                              ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20'
+                              : act.healthStatus === 'Offline'
+                              ? 'bg-red-500/10 text-red-500 border border-red-500/20'
+                              : act.healthStatus === 'Outdated'
+                              ? 'bg-indigo-500/10 text-indigo-500 border border-indigo-500/20'
+                              : act.healthStatus === 'Suspended'
+                              ? 'bg-amber-500/10 text-amber-500 border border-amber-500/20'
+                              : 'bg-destructive/10 text-destructive border border-destructive/20'
+                          }`}
+                        >
+                          {act.healthStatus || 'Healthy'}
+                        </span>
+                        {act.flaggedForReview && (
+                          <span className="ml-1.5 px-1.5 py-0.5 rounded-md bg-rose-500 text-white text-[9px] font-black tracking-wider uppercase animate-pulse">
+                            Review
+                          </span>
+                        )}
+                      </td>
                       <td className="px-6 py-4 text-right space-x-1">
                         <Button
                           size="sm"
@@ -299,6 +347,30 @@ export default function AdminActivationsPage() {
 
                         {act.status === 'active' && (
                           <>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={revalidatingId === act.activationId}
+                              onClick={async () => {
+                                setRevalidatingId(act.activationId);
+                                try {
+                                  await apiRequest(`/admin/activations/${act.activationId}/force-revalidate`, {
+                                    method: 'POST',
+                                  });
+                                  alert('Manual revalidation request dispatched! Checked status sync.');
+                                  fetchActivations();
+                                } catch (err: any) {
+                                  alert(err.message || 'Failed to force revalidation');
+                                } finally {
+                                  setRevalidatingId(null);
+                                }
+                              }}
+                              className="text-xs h-8 gap-1 border-indigo-500/30 text-indigo-500 hover:bg-indigo-500/10"
+                            >
+                              <RotateCcw className={`h-3 w-3 ${revalidatingId === act.activationId ? 'animate-spin' : ''}`} />
+                              Force Sync
+                            </Button>
+
                             <Button
                               size="sm"
                               variant="outline"

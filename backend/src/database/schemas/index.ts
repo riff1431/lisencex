@@ -15,3 +15,13 @@ export * from './license-plan.schema';
 export * from './product-credential.schema';
 export * from './notification.schema';
 export * from './notification-preference.schema';
+export * from './license-recovery.schema';
+export * from './order.schema';
+export * from './payment-transaction.schema';
+export * from './coupon.schema';
+export * from './coupon-usage.schema';
+export * from './ticket.schema';
+export * from './category.schema';
+export * from './tag.schema';
+export * from './review.schema';
+

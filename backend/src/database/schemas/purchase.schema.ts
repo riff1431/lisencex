@@ -77,7 +77,10 @@ export const PurchaseSchema = SchemaFactory.createForClass(Purchase);
 PurchaseSchema.index({ purchaseKey: 1 }, { unique: true, sparse: true });
 PurchaseSchema.index(
   { source: 1, externalPurchaseCode: 1 },
-  { unique: true, sparse: true },
+  {
+    unique: true,
+    partialFilterExpression: { externalPurchaseCode: { $type: 'string' } },
+  },
 );
 PurchaseSchema.index({ userId: 1 });
 PurchaseSchema.index({ productId: 1 });

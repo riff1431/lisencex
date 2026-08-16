@@ -31,6 +31,24 @@ import {
   LicensePlanSchema,
   ProductCredential,
   ProductCredentialSchema,
+  LicenseRecoveryRequest,
+  LicenseRecoveryRequestSchema,
+  Order,
+  OrderSchema,
+  PaymentTransaction,
+  PaymentTransactionSchema,
+  Coupon,
+  CouponSchema,
+  CouponUsage,
+  CouponUsageSchema,
+  Ticket,
+  TicketSchema,
+  Category,
+  CategorySchema,
+  Tag,
+  TagSchema,
+  Review,
+  ReviewSchema,
 } from './schemas';
 
 const models = [
@@ -49,6 +67,15 @@ const models = [
   { name: DownloadLog.name, schema: DownloadLogSchema },
   { name: LicensePlan.name, schema: LicensePlanSchema },
   { name: ProductCredential.name, schema: ProductCredentialSchema },
+  { name: LicenseRecoveryRequest.name, schema: LicenseRecoveryRequestSchema },
+  { name: Order.name, schema: OrderSchema },
+  { name: PaymentTransaction.name, schema: PaymentTransactionSchema },
+  { name: Coupon.name, schema: CouponSchema },
+  { name: CouponUsage.name, schema: CouponUsageSchema },
+  { name: Ticket.name, schema: TicketSchema },
+  { name: Category.name, schema: CategorySchema },
+  { name: Tag.name, schema: TagSchema },
+  { name: Review.name, schema: ReviewSchema },
 ];
 
 @Global()

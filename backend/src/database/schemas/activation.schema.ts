@@ -67,12 +67,54 @@ export class Activation {
 
   @Prop({ type: String, default: null })
   deactivationReason?: string;
+
+  @Prop({ type: Boolean, default: false, index: true })
+  isSandbox: boolean;
+
+  @Prop({ type: String, default: null })
+  revocationReason?: string;
+
+  @Prop({ type: Date, default: null })
+  revokedAt?: Date;
+
+  @Prop({ type: String, default: null })
+  suspendedReason?: string;
+
+  @Prop({ type: Date, default: null })
+  suspendedAt?: Date;
+
+  @Prop({ type: Boolean, default: false, index: true })
+  isCriticalRevoked: boolean;
+
+  @Prop({ type: Date, default: Date.now })
+  lastSeenAt: Date;
+
+  @Prop({ type: String, default: null })
+  sdkVersion?: string;
+
+  @Prop({ type: String, default: null })
+  sdkType?: string;
+
+  @Prop({ type: String, default: 'healthy' })
+  apiHealth: string;
+
+  @Prop({ type: String, default: 'healthy', index: true })
+  healthStatus: string;
+
+  @Prop({ type: Boolean, default: false, index: true })
+  flaggedForReview: boolean;
+
+  @Prop({ type: Boolean, default: false })
+  forceRevalidate: boolean;
 }
 
 export const ActivationSchema = SchemaFactory.createForClass(Activation);
 
+ActivationSchema.index({ isSandbox: 1 });
 ActivationSchema.index({ licenseId: 1, status: 1 });
 ActivationSchema.index({ installationId: 1 });
 ActivationSchema.index({ normalizedDomain: 1 });
 ActivationSchema.index({ productId: 1 });
+ActivationSchema.index({ healthStatus: 1 });
+ActivationSchema.index({ flaggedForReview: 1 });
 ActivationSchema.index({ activatedAt: -1 });

@@ -2,6 +2,7 @@ import { Geist, Geist_Mono, Inter } from "next/font/google"
 import "./globals.css"
 import { ThemeProvider } from "@/components/theme-provider"
 import { AuthProvider } from "@/lib/auth-context"
+import { CartProvider } from "@/lib/cart-context"
 import { Navbar } from "@/components/navbar"
 import { cn } from "@/lib/utils"
 
@@ -30,8 +31,10 @@ export default function RootLayout({
       <body className="min-h-screen bg-background text-foreground flex flex-col">
         <ThemeProvider>
           <AuthProvider>
-            <Navbar />
-            <main className="flex-1 flex flex-col">{children}</main>
+            <CartProvider>
+              <Navbar />
+              <main className="flex-1 flex flex-col">{children}</main>
+            </CartProvider>
           </AuthProvider>
         </ThemeProvider>
       </body>

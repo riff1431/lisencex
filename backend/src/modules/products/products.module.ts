@@ -9,6 +9,11 @@ import { ProductsPackageGeneratorController } from './products-package-generator
 import { ProductsPackageGeneratorService } from './products-package-generator.service';
 import { ProductsVerificationController } from './products-verification.controller';
 import { ProductsVerificationService } from './products-verification.service';
+import {
+  ProductsSandboxAdminController,
+  PublicSandboxLicensingController,
+} from './products-sandbox.controller';
+import { ProductsSandboxService } from './products-sandbox.service';
 
 @Module({
   controllers: [
@@ -18,18 +23,22 @@ import { ProductsVerificationService } from './products-verification.service';
     ProductsWizardController,
     ProductsPackageGeneratorController,
     ProductsVerificationController,
+    ProductsSandboxAdminController,
+    PublicSandboxLicensingController,
   ],
   providers: [
     ProductsService,
     ProductsIntegrationService,
     ProductsPackageGeneratorService,
     ProductsVerificationService,
+    ProductsSandboxService,
   ],
   exports: [
     ProductsService,
     ProductsIntegrationService,
     ProductsPackageGeneratorService,
     ProductsVerificationService,
+    ProductsSandboxService,
   ],
 })
 export class ProductsModule {}

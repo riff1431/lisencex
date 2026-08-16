@@ -81,6 +81,8 @@ export class LicenseClient {
       installationId: this.getInstallationId(),
       domain: this.getDomain(),
       productVersion: this.currentVersion,
+      sdkVersion: '1.0.0',
+      sdkType: 'typescript',
     };
 
     if (isPurchaseCode) {
@@ -93,6 +95,10 @@ export class LicenseClient {
 
     if (res.valid && res.token) {
       this.saveCache(res);
+    }
+
+    if (res.sdkWarning) {
+      console.warn(`[LicenseNest SDK Warning]: ${res.sdkWarning}`);
     }
 
     return res;
@@ -130,10 +136,16 @@ export class LicenseClient {
       token: cached.token,
       domain: this.getDomain(),
       productVersion: this.currentVersion,
+      sdkVersion: '1.0.0',
+      sdkType: 'typescript',
     };
 
     try {
       const res = await this.sendRequest('/public/licenses/validate', payload);
+
+      if (res.sdkWarning) {
+        console.warn(`[LicenseNest SDK Warning]: ${res.sdkWarning}`);
+      }
 
       if (res.valid) {
         cached.token = res.token || cached.token;

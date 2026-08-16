@@ -72,6 +72,18 @@ export class LicenseSettings {
 
   @Prop({ type: Boolean, default: true })
   downloadsEnabled: boolean;
+
+  @Prop({ type: Boolean, default: true })
+  recoveryEnabled: boolean;
+
+  @Prop({ type: Boolean, default: true })
+  autoApproveRecovery: boolean;
+
+  @Prop({ type: Number, default: 3 })
+  recoveryLimit: number;
+
+  @Prop({ type: Number, default: 720 }) // 720 hours = 30 days
+  recoveryCooldownHours: number;
 }
 
 export const LicenseSettingsSchema =
@@ -107,6 +119,32 @@ export class DistributionChannel {
 
 export const DistributionChannelSchema =
   SchemaFactory.createForClass(DistributionChannel);
+
+@Schema({ _id: false })
+export class EmergencyKillSwitch {
+  @Prop({ type: Boolean, default: false })
+  disableNewActivations: boolean;
+
+  @Prop({ type: Boolean, default: false })
+  disableValidation: boolean;
+
+  @Prop({ type: Boolean, default: false })
+  disableUpdatesDownloads: boolean;
+
+  @Prop({ type: Boolean, default: false })
+  isProductSuspended: boolean;
+
+  @Prop({ type: String, default: null })
+  activeReason?: string;
+
+  @Prop({ type: Date, default: null })
+  activatedAt?: Date;
+
+  @Prop({ type: String, default: null })
+  activatedBy?: string;
+}
+
+export const EmergencyKillSwitchSchema = SchemaFactory.createForClass(EmergencyKillSwitch);
 
 @Schema({ timestamps: true, collection: 'products' })
 export class Product {
@@ -156,6 +194,9 @@ export class Product {
   currency: string;
 
   @Prop({ type: String, default: null })
+  thumbnailUrl?: string;
+
+  @Prop({ type: String, default: null })
   iconUrl?: string;
 
   @Prop({ type: String, default: null })
@@ -163,6 +204,24 @@ export class Product {
 
   @Prop({ type: String, default: null })
   bannerUrl?: string;
+
+  @Prop({ type: [String], default: [] })
+  screenshots: string[];
+
+  @Prop({ type: [Object], default: [] })
+  mediaGallery: Array<{
+    url: string;
+    title?: string;
+    type?: string;
+    sizeBytes?: number;
+    width?: number;
+    height?: number;
+    order?: number;
+    uploadedAt?: Date;
+  }>;
+
+  @Prop({ type: Object, default: {} })
+  mediaMetadata?: Record<string, any>;
 
   @Prop({ type: String, default: null })
   packageFileUrl?: string;
@@ -172,6 +231,83 @@ export class Product {
 
   @Prop({ type: String, default: '1.0.0' })
   latestStableVersion: string;
+
+  @Prop({ type: String, default: null })
+  demoUrl?: string;
+
+  @Prop({ type: String, default: null })
+  documentationUrl?: string;
+
+  @Prop({ type: String, default: '' })
+  requirements: string;
+
+  @Prop({ type: Types.ObjectId, ref: 'Category', default: null, index: true })
+  primaryCategoryId?: Types.ObjectId;
+
+  @Prop({ type: [{ type: Types.ObjectId, ref: 'Category' }], default: [], index: true })
+  categoryIds: Types.ObjectId[];
+
+  @Prop({ type: [String], default: [], index: true })
+  tags: string[];
+
+  @Prop({ type: Boolean, default: false, index: true })
+  isFeatured: boolean;
+
+  @Prop({ type: Boolean, default: false, index: true })
+  isPopular: boolean;
+
+  @Prop({ type: Boolean, default: false, index: true })
+  isNewRelease: boolean;
+
+  @Prop({ type: Boolean, default: false, index: true })
+  isBestSeller: boolean;
+
+  @Prop({ type: String, default: null })
+  badgeLabel?: string;
+
+  @Prop({ type: Number, default: 0, index: true })
+  salesCount: number;
+
+  @Prop({ type: Number, default: 0, index: true })
+  viewCount: number;
+
+  @Prop({ type: Number, default: 5.0, index: true })
+  averageRating: number;
+
+  @Prop({ type: Number, default: 0 })
+  totalReviews: number;
+
+  @Prop({ type: [{ type: Types.ObjectId, ref: 'Product' }], default: [] })
+  bundleProductIds: Types.ObjectId[];
+
+  @Prop({
+    type: [
+      {
+        name: { type: String, required: true },
+        price: { type: Number, required: true },
+        description: { type: String, default: '' },
+        licenseType: { type: String, default: 'regular' },
+      },
+    ],
+    default: [],
+  })
+  addons: Array<{
+    name: string;
+    price: number;
+    description?: string;
+    licenseType?: string;
+  }>;
+
+  @Prop({ type: Object, default: {} })
+  compatibility: {
+    minPhpVersion?: string;
+    maxPhpVersion?: string;
+    minWordPressVersion?: string;
+    minNodeVersion?: string;
+    databases?: string[];
+    frameworks?: string[];
+    browsers?: string[];
+  };
 
   @Prop({ type: LicenseSettingsSchema, default: () => ({}) })
   licenseSettings: LicenseSettings;
@@ -197,6 +333,9 @@ export class Product {
 
   @Prop({ type: Object, default: null })
   integrationMetadata?: Record<string, any>;
+
+  @Prop({ type: EmergencyKillSwitchSchema, default: () => ({}) })
+  emergencyKillSwitch: EmergencyKillSwitch;
 
   @Prop({ type: Boolean, default: false })
   isArchived: boolean;

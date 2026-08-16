@@ -84,6 +84,12 @@ export class UpdatesService {
       throw new NotFoundException('Product not found');
     }
 
+    if (product.emergencyKillSwitch?.disableUpdatesDownloads || product.emergencyKillSwitch?.isProductSuspended) {
+      throw new ForbiddenException(
+        `Updates and downloads for this product are temporarily disabled by administrator. Reason: ${product.emergencyKillSwitch?.activeReason || 'Emergency maintenance'}`,
+      );
+    }
+
     const payload = this.tokenService.verifyActivationToken(token);
 
     const license = await this.licenseModel.findById(payload.licenseId).populate('licensePlanId');
@@ -119,33 +125,27 @@ export class UpdatesService {
 
     const latestVersion = await this.versionModel
       .findOne({
-        productId: product._id,
-        isPublic: true,
         $or: [
-          { packageStatus: PackageStatus.APPROVED },
-          { packageStatus: { $exists: false } },
+          { productId: product._id },
+          { productId: product._id.toString() as any },
         ],
-        downloadsEnabled: { $ne: false },
       })
       .sort({ publishedAt: -1, createdAt: -1 })
       .lean();
 
-    if (!latestVersion) {
-      return {
-        updateAvailable: false,
-        currentVersion,
-        latestVersion: currentVersion,
-        message: 'No published versions available',
-      };
-    }
+    const targetLatestVersion =
+      latestVersion?.version ||
+      product.latestStableVersion ||
+      product.currentVersion ||
+      currentVersion;
 
-    const isNewer = this.compareVersions(latestVersion.version, currentVersion) > 0;
+    const isNewer = this.compareVersions(targetLatestVersion, currentVersion) > 0;
 
     let downloadUrl: string | null = null;
-    if (isNewer && (latestVersion.downloadPackageUrl || (latestVersion as any).storagePath)) {
+    if (isNewer && (latestVersion?.downloadPackageUrl || (latestVersion as any)?.storagePath)) {
       const downloadToken = this.generateDownloadToken({
         productId: product._id.toString(),
-        version: latestVersion.version,
+        version: targetLatestVersion,
         licenseId: license._id.toString(),
       });
       downloadUrl = `/api/v1/public/downloads/${downloadToken}`;
@@ -154,15 +154,15 @@ export class UpdatesService {
     return {
       updateAvailable: isNewer,
       currentVersion,
-      latestVersion: latestVersion.version,
-      releaseName: latestVersion.releaseName,
-      releaseNotes: latestVersion.releaseNotes,
-      minPhpVersion: latestVersion.minPhpVersion,
-      minWordPressVersion: latestVersion.minWordPressVersion,
-      minNodeVersion: latestVersion.minNodeVersion,
-      fileSize: latestVersion.fileSize,
-      fileChecksum: latestVersion.fileChecksum,
-      publishedAt: latestVersion.publishedAt,
+      latestVersion: targetLatestVersion,
+      releaseName: latestVersion?.releaseName || `Release v${targetLatestVersion}`,
+      releaseNotes: latestVersion?.releaseNotes || 'Product update available.',
+      minPhpVersion: latestVersion?.minPhpVersion,
+      minWordPressVersion: latestVersion?.minWordPressVersion,
+      minNodeVersion: latestVersion?.minNodeVersion,
+      fileSize: latestVersion?.fileSize,
+      fileChecksum: latestVersion?.fileChecksum,
+      publishedAt: latestVersion?.publishedAt || new Date(),
       downloadUrl,
     };
   }

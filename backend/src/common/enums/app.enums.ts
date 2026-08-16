@@ -70,6 +70,9 @@ export enum ActivationStatus {
   REVOKED = 'revoked',
   EXPIRED = 'expired',
   BLOCKED = 'blocked',
+  LOST = 'lost',
+  RECOVERED = 'recovered',
+  REPLACED = 'replaced',
 }
 
 export enum EnvironmentType {
@@ -107,6 +110,11 @@ export enum NotificationType {
   SUPPORT_EXPIRED = 'support_expired',
   SUSPICIOUS_ACTIVITY = 'suspicious_activity',
   PRODUCT_UPDATE_AVAILABLE = 'product_update_available',
+  LICENSE_RECOVERY_REQUESTED = 'license_recovery_requested',
+  LICENSE_RECOVERY_APPROVED = 'license_recovery_approved',
+  LICENSE_RECOVERY_REJECTED = 'license_recovery_rejected',
+  ORDER_CREATED = 'order_created',
+  ORDER_PAID = 'order_paid',
 
   // Admin events
   ACTIVATION_FAILED = 'activation_failed',
@@ -144,3 +152,12 @@ export enum IntegrationStatus {
   VERIFIED = 'verified',
   PRODUCTION_READY = 'production_ready',
 }
+
+export enum PackageStatus {
+  PENDING = 'pending',
+  APPROVED = 'approved',
+  REJECTED = 'rejected',
+  ARCHIVED = 'archived',
+  DISABLED = 'disabled',
+}
+

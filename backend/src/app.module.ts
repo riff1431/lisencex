@@ -22,6 +22,16 @@ import { LicensePlansModule } from './modules/license-plans/license-plans.module
 import { PackagesModule } from './modules/packages/packages.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { DocsModule } from './modules/docs/docs.module';
+import { EmergencyModule } from './modules/emergency/emergency.module';
+import { LicenseRecoveryModule } from './modules/license-recovery/license-recovery.module';
+import { OrdersModule } from './modules/orders/orders.module';
+import { PaymentsModule } from './modules/payments/payments.module';
+import { CouponsModule } from './modules/coupons/coupons.module';
+import { SupportModule } from './modules/support/support.module';
+import { MediaModule } from './modules/media/media.module';
+import { CategoriesModule } from './modules/categories/categories.module';
+import { ReviewsModule } from './modules/reviews/reviews.module';
+import { HealthModule } from './modules/health/health.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 
@@ -61,6 +71,16 @@ import { AppService } from './app.service';
     PackagesModule,
     NotificationsModule,
     DocsModule,
+    EmergencyModule,
+    LicenseRecoveryModule,
+    OrdersModule,
+    PaymentsModule,
+    CouponsModule,
+    SupportModule,
+    MediaModule,
+    CategoriesModule,
+    ReviewsModule,
+    HealthModule,
   ],
   controllers: [AppController],
   providers: [

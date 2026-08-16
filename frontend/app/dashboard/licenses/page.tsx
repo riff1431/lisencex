@@ -6,7 +6,7 @@ import {
   KeyRound, Copy, CheckCircle2, Laptop2, Trash2, Eye, EyeOff,
   Sparkles, Search, Filter, RefreshCw, Shield, Clock, CalendarDays,
   Globe2, Zap, AlertTriangle, X, ChevronDown, ChevronUp,
-  ExternalLink, Package, Tag, Activity, Infinity,
+  ExternalLink, Package, Tag, Activity, Infinity, RotateCcw,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { apiRequest } from '@/lib/api';
@@ -113,6 +113,19 @@ export default function DashboardLicensesPage() {
   const [deactivateError, setDeactivateError] = useState('');
   const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
+  // Recovery State
+  const [recoveryTarget, setRecoveryTarget] = useState<{ activation: any; license: any } | null>(null);
+  const [recoveryForm, setRecoveryForm] = useState({
+    newDomain: '',
+    newInstallationId: '',
+    newInstallationUrl: '',
+    reason: 'hosting_server_lost',
+    reasonDetail: '',
+  });
+  const [recoveryLoading, setRecoveryLoading] = useState(false);
+  const [recoveryResultToken, setRecoveryResultToken] = useState<string | null>(null);
+  const [recoveriesMap, setRecoveriesMap] = useState<Record<string, any[]>>({});
+
   const showToast = (type: 'success' | 'error', message: string) => {
     setToast({ type, message });
     setTimeout(() => setToast(null), 4000);
@@ -141,7 +154,19 @@ export default function DashboardLicensesPage() {
   };
 
   const toggleShowKey = (id: string) => setShowKeyMap(p => ({ ...p, [id]: !p[id] }));
-  const toggleExpand = (id: string) => setExpandedMap(p => ({ ...p, [id]: !p[id] }));
+  const toggleExpand = (id: string) => {
+    setExpandedMap(p => {
+      const newVal = !p[id];
+      if (newVal) {
+        apiRequest(`/customer/licenses/${id}/recoveries`)
+          .then((res) => {
+            setRecoveriesMap(prev => ({ ...prev, [id]: res.data || [] }));
+          })
+          .catch(() => {});
+      }
+      return { ...p, [id]: newVal };
+    });
+  };
 
   const handleDeactivate = async () => {
     if (!deactivateTarget) return;
@@ -157,6 +182,46 @@ export default function DashboardLicensesPage() {
       showToast('error', err.message || 'Deactivation failed');
     } finally {
       setDeactivateLoading(false);
+    }
+  };
+
+  const handleRecover = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!recoveryTarget) return;
+    setRecoveryLoading(true);
+    setRecoveryResultToken(null);
+    try {
+      const res = await apiRequest('/customer/licenses/recover', {
+        method: 'POST',
+        body: JSON.stringify({
+          licenseId: recoveryTarget.license._id,
+          oldActivationId: recoveryTarget.activation.activationId,
+          newDomain: recoveryForm.newDomain,
+          newInstallationId: recoveryForm.newInstallationId,
+          newInstallationUrl: recoveryForm.newInstallationUrl,
+          reason: recoveryForm.reason,
+          reasonDetail: recoveryForm.reasonDetail,
+        }),
+      });
+
+      if (res.data?.status === 'approved') {
+        showToast('success', 'License successfully recovered! New activation is active.');
+        setRecoveryResultToken(res.data?.token || null);
+        fetchLicenses(true);
+        apiRequest(`/customer/licenses/${recoveryTarget.license._id}/recoveries`)
+          .then((r) => {
+            setRecoveriesMap(prev => ({ ...prev, [recoveryTarget.license._id]: r.data || [] }));
+          })
+          .catch(() => {});
+      } else {
+        showToast('success', 'Recovery request submitted and is pending admin approval.');
+        setRecoveryTarget(null);
+        fetchLicenses(true);
+      }
+    } catch (err: any) {
+      showToast('error', err.message || 'Recovery request failed');
+    } finally {
+      setRecoveryLoading(false);
     }
   };
 
@@ -526,18 +591,63 @@ export default function DashboardLicensesPage() {
                                     )}
                                   </div>
                                 </div>
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => setDeactivateTarget({ activation: act, licenseKey: lic.licenseKey })}
-                                  className="h-8 text-xs font-semibold gap-1.5 shrink-0 text-destructive border-destructive/30 hover:bg-destructive hover:text-white hover:border-destructive transition-all"
-                                >
-                                  <Trash2 className="h-3.5 w-3.5" />
-                                  Deactivate
-                                </Button>
+                                <div className="flex items-center gap-2 shrink-0">
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => {
+                                      setRecoveryTarget({ activation: act, license: lic });
+                                      setRecoveryResultToken(null);
+                                    }}
+                                    className="h-8 text-xs font-semibold gap-1.5 text-amber-500 border-amber-500/30 hover:bg-amber-500 hover:text-white hover:border-amber-500 transition-all"
+                                  >
+                                    <RotateCcw className="h-3.5 w-3.5" />
+                                    Recover
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => setDeactivateTarget({ activation: act, licenseKey: lic.licenseKey })}
+                                    className="h-8 text-xs font-semibold gap-1.5 text-destructive border-destructive/30 hover:bg-destructive hover:text-white hover:border-destructive transition-all"
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                    Deactivate
+                                  </Button>
+                                </div>
                               </div>
                             );
                           })}
+                        </div>
+                      )}
+
+                      {/* Recovery History Logs */}
+                      {recoveriesMap[lic._id] && recoveriesMap[lic._id].length > 0 && (
+                        <div className="mt-4 pt-4 border-t border-border space-y-2">
+                          <h4 className="text-[10px] font-bold text-muted-foreground flex items-center gap-1.5 uppercase tracking-wider">
+                            <RotateCcw className="h-3.5 w-3.5 text-indigo-500" />
+                            License Recovery Logs
+                          </h4>
+                          <div className="space-y-2 max-h-40 overflow-y-auto">
+                            {recoveriesMap[lic._id].map((rec: any) => (
+                              <div key={rec._id} className="p-3 rounded-2xl bg-secondary/40 border border-border/50 text-[11px] space-y-1">
+                                <div className="flex items-center justify-between font-bold">
+                                  <span className="text-foreground">{rec.oldDomain} → {rec.newDomain}</span>
+                                  <span className={`px-1.5 py-0.5 rounded-full text-[9px] uppercase ${
+                                    rec.status === 'approved' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-destructive/10 text-destructive'
+                                  }`}>
+                                    {rec.status}
+                                  </span>
+                                </div>
+                                <div className="text-muted-foreground grid grid-cols-2 gap-x-2 font-mono text-[10px]">
+                                  <div>Reason: {rec.reason?.replace(/_/g, ' ')}</div>
+                                  <div>Resolved: {formatDate(rec.resolvedAt || rec.createdAt)}</div>
+                                </div>
+                                {rec.rejectionReason && (
+                                  <div className="text-destructive font-semibold">Rejected: {rec.rejectionReason}</div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
                         </div>
                       )}
                     </div>
@@ -546,6 +656,145 @@ export default function DashboardLicensesPage() {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* LICENSE RECOVERY MODAL */}
+      {recoveryTarget && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="w-full max-w-md rounded-3xl border border-border bg-card shadow-2xl p-6 sm:p-8 space-y-5 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-border pb-3">
+              <div>
+                <h3 className="text-base font-black tracking-tight text-foreground flex items-center gap-2">
+                  <RotateCcw className="h-5 w-5 text-indigo-500" />
+                  Recover Installation slot
+                </h3>
+                <p className="text-xs text-muted-foreground">
+                  Replace activation on <strong>{recoveryTarget.activation.domain}</strong>
+                </p>
+              </div>
+              <button
+                onClick={() => setRecoveryTarget(null)}
+                className="text-muted-foreground hover:text-foreground"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {recoveryResultToken ? (
+              <div className="space-y-4 text-xs">
+                <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 space-y-1.5">
+                  <h4 className="font-bold flex items-center gap-1.5 text-sm">
+                    <CheckCircle2 className="h-4 w-4" /> Recovery Auto-Approved!
+                  </h4>
+                  <p>Copy the new signed activation token below and save it on your new installation.</p>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold uppercase text-muted-foreground">Signed Activation Token</label>
+                  <textarea
+                    readOnly
+                    rows={4}
+                    value={recoveryResultToken}
+                    className="w-full p-3 rounded-xl border border-border bg-secondary font-mono text-[10px] break-all select-all focus:outline-none"
+                  />
+                </div>
+                <div className="flex justify-end pt-2">
+                  <Button
+                    onClick={() => {
+                      navigator.clipboard.writeText(recoveryResultToken);
+                      showToast('success', 'Token copied to clipboard');
+                      setRecoveryResultToken(null);
+                      setRecoveryTarget(null);
+                    }}
+                    className="bg-indigo-600 text-white font-bold"
+                  >
+                    Copy Token &amp; Close
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <form onSubmit={handleRecover} className="space-y-4 text-xs">
+                <div className="space-y-3">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold uppercase text-muted-foreground">New Domain / Address</label>
+                    <input
+                      required
+                      type="text"
+                      placeholder="new-site.com"
+                      value={recoveryForm.newDomain}
+                      onChange={(e) => setRecoveryForm(p => ({ ...p, newDomain: e.target.value }))}
+                      className="w-full p-2.5 rounded-xl border border-border bg-background"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold uppercase text-muted-foreground">New Installation ID</label>
+                    <input
+                      required
+                      type="text"
+                      placeholder="ins_XXXXX"
+                      value={recoveryForm.newInstallationId}
+                      onChange={(e) => setRecoveryForm(p => ({ ...p, newInstallationId: e.target.value }))}
+                      className="w-full p-2.5 rounded-xl border border-border bg-background font-mono"
+                    />
+                    <p className="text-[9px] text-muted-foreground">This ID is generated by your new plugin/script activation page.</p>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold uppercase text-muted-foreground">New Installation URL</label>
+                    <input
+                      type="text"
+                      placeholder="https://new-site.com"
+                      value={recoveryForm.newInstallationUrl}
+                      onChange={(e) => setRecoveryForm(p => ({ ...p, newInstallationUrl: e.target.value }))}
+                      className="w-full p-2.5 rounded-xl border border-border bg-background"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold uppercase text-muted-foreground">Reason for Recovery</label>
+                    <select
+                      value={recoveryForm.reason}
+                      onChange={(e) => setRecoveryForm(p => ({ ...p, reason: e.target.value }))}
+                      className="w-full p-2.5 rounded-xl border border-border bg-background font-semibold"
+                    >
+                      <option value="hosting_server_lost">Hosting / Server Lost</option>
+                      <option value="domain_expired">Domain Expired</option>
+                      <option value="website_deleted">Website Deleted</option>
+                      <option value="wordpress_reinstalled">WordPress Reinstalled</option>
+                      <option value="nextjs_deployment_replaced">Next.js Deployment Replaced</option>
+                      <option value="php_script_moved">PHP Script Moved</option>
+                      <option value="other">Other (Custom Reason)</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold uppercase text-muted-foreground">Explain briefly</label>
+                    <textarea
+                      rows={2}
+                      placeholder="Give a short explanation of what happened..."
+                      value={recoveryForm.reasonDetail}
+                      onChange={(e) => setRecoveryForm(p => ({ ...p, reasonDetail: e.target.value }))}
+                      className="w-full p-2.5 rounded-xl border border-border bg-background"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-2 pt-2">
+                  <Button type="button" variant="outline" onClick={() => setRecoveryTarget(null)}>
+                    Cancel
+                  </Button>
+                  <Button
+                    type="submit"
+                    disabled={recoveryLoading}
+                    className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold"
+                  >
+                    {recoveryLoading ? 'Submitting...' : 'Recover Activation'}
+                  </Button>
+                </div>
+              </form>
+            )}
+          </div>
         </div>
       )}
     </div>

@@ -22,11 +22,15 @@ import {
   ActivationDocument,
 } from '../../database/schemas/activation.schema';
 import {
+  LicensePlan,
+  LicensePlanDocument,
+} from '../../database/schemas/license-plan.schema';
+import {
   CreateProductDto,
   UpdateProductDto,
   CreateProductVersionDto,
 } from './dto/product.dto';
-import { ProductStatus, ActivationStatus } from '../../common/enums/app.enums';
+import { ProductStatus, ActivationStatus, PackageStatus } from '../../common/enums/app.enums';
 
 @Injectable()
 export class ProductsService {
@@ -37,6 +41,8 @@ export class ProductsService {
     @InjectModel(License.name) private licenseModel: Model<LicenseDocument>,
     @InjectModel(Activation.name)
     private activationModel: Model<ActivationDocument>,
+    @InjectModel(LicensePlan.name)
+    private planModel: Model<LicensePlanDocument>,
   ) {}
 
   async create(createDto: CreateProductDto) {
@@ -148,11 +154,27 @@ export class ProductsService {
   async findBySlug(slug: string) {
     const product = await this.productModel
       .findOne({ slug: slug.toLowerCase().trim(), isArchived: false })
+      .populate('defaultLicensePlanId')
+      .populate('envatoLicensePlanId')
       .lean();
     if (!product) {
       throw new NotFoundException(`Product with slug "${slug}" not found`);
     }
-    return product;
+
+    const [plans, latestVersion] = await Promise.all([
+      this.planModel.find({ isActive: true }).sort({ sortOrder: 1, price: 1 }).lean(),
+      this.versionModel
+        .findOne({ productId: (product as any)._id, isPublic: true })
+        .sort({ publishedAt: -1 })
+        .lean(),
+    ]);
+
+    return {
+      ...product,
+      plans,
+      latestVersion: latestVersion?.version || product.currentVersion,
+      releaseNotes: latestVersion?.releaseNotes || '',
+    };
   }
 
   async update(id: string, updateDto: Partial<UpdateProductDto>) {
@@ -215,6 +237,9 @@ export class ProductsService {
 
     const version = await this.versionModel.create({
       ...versionDto,
+      packageStatus: (versionDto as any).packageStatus || PackageStatus.APPROVED,
+      isPublic: versionDto.isPublic !== undefined ? versionDto.isPublic : true,
+      downloadsEnabled: true,
       productId: product._id,
       publishedAt: new Date(),
     });

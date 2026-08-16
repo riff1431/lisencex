@@ -64,6 +64,22 @@ export class ActivationsController {
     return this.activationsService.validate(dto, ip);
   }
 
+  @Post('public/licenses/sync')
+  @UseGuards(ProductClientAuthGuard)
+  @Scopes('validate')
+  @HttpCode(HttpStatus.OK)
+  async sync(
+    @Body() dto: ValidateLicenseDto,
+    @Req() req: any,
+  ) {
+    const ip =
+      (req.headers['x-forwarded-for'] as string)?.split(',')[0] ||
+      req.socket.remoteAddress ||
+      '';
+
+    return this.activationsService.sync(dto, ip);
+  }
+
   @Post('public/licenses/deactivate')
   @UseGuards(ProductClientAuthGuard)
   @Scopes('activate')
@@ -165,5 +181,16 @@ export class ActivationsController {
       transferDto,
       adminEmail,
     );
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
+  @Post('admin/activations/:id/force-revalidate')
+  @HttpCode(HttpStatus.OK)
+  async forceRevalidate(
+    @Param('id') id: string,
+    @CurrentUser('email') adminEmail: string,
+  ) {
+    return this.activationsService.adminForceRevalidate(id, adminEmail);
   }
 }

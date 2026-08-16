@@ -42,6 +42,14 @@ export class ActivateLicenseDto {
   @IsOptional()
   @IsString()
   serverFingerprint?: string;
+
+  @IsOptional()
+  @IsString()
+  sdkVersion?: string;
+
+  @IsOptional()
+  @IsString()
+  sdkType?: string;
 }
 
 export class ValidateLicenseDto {
@@ -64,6 +72,14 @@ export class ValidateLicenseDto {
   @IsOptional()
   @IsString()
   productVersion?: string;
+
+  @IsOptional()
+  @IsString()
+  sdkVersion?: string;
+
+  @IsOptional()
+  @IsString()
+  sdkType?: string;
 }
 
 export class DeactivateLicenseDto {

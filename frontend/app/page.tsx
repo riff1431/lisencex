@@ -15,6 +15,7 @@ import {
   RefreshCw,
   Download,
   Terminal,
+  ShoppingBag,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
@@ -45,15 +46,21 @@ export default function HomePage() {
 
           {/* CTAs */}
           <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
+            <Link href="/store">
+              <Button size="lg" className="h-12 px-7 text-base font-bold shadow-lg shadow-indigo-500/20 bg-indigo-600 hover:bg-indigo-700 text-white gap-2">
+                <ShoppingBag className="h-4 w-4" />
+                Browse Digital Store
+              </Button>
+            </Link>
             <Link href="/playground">
-              <Button size="lg" className="h-12 px-7 text-base font-semibold shadow-lg shadow-primary/20 gap-2">
+              <Button size="lg" variant="outline" className="h-12 px-7 text-base font-semibold gap-2 border-border/80">
                 <Terminal className="h-4 w-4" />
                 Live API Playground
               </Button>
             </Link>
             <Link href="/login">
-              <Button size="lg" variant="outline" className="h-12 px-7 text-base font-semibold gap-2 border-border/80">
-                Admin & Customer Login
+              <Button size="lg" variant="ghost" className="h-12 px-5 text-base font-semibold gap-2">
+                Sign In
                 <ArrowRight className="h-4 w-4" />
               </Button>
             </Link>

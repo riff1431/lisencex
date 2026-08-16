@@ -32,6 +32,10 @@ import {
   LicensePlanDocument,
 } from '../../database/schemas/license-plan.schema';
 import {
+  LicenseRecoveryRequest,
+  LicenseRecoveryRequestDocument,
+} from '../../database/schemas/license-recovery.schema';
+import {
   LicenseStatus,
   LicenseType,
   MarketplaceProviderType,
@@ -58,6 +62,8 @@ export class LicensesService {
     private installationModel: Model<InstallationDocument>,
     @InjectModel(AuditLog.name) private auditLogModel: Model<AuditLogDocument>,
     @InjectModel(LicensePlan.name) private licensePlanModel: Model<LicensePlanDocument>,
+    @InjectModel(LicenseRecoveryRequest.name)
+    private recoveryModel: Model<LicenseRecoveryRequestDocument>,
   ) {}
 
   generateLicenseKey(): { licenseKey: string; licenseKeyHash: string } {
@@ -536,6 +542,11 @@ export class LicensesService {
       .sort({ lastSeenAt: -1 })
       .lean();
 
+    const recoveries = await this.recoveryModel
+      .find({ licenseId: license._id })
+      .sort({ createdAt: -1 })
+      .lean();
+
     const realActiveCount = activations.filter(
       (a) => a.status === ActivationStatus.ACTIVE,
     ).length;
@@ -545,6 +556,7 @@ export class LicensesService {
       currentActivationCount: realActiveCount,
       activations,
       installations,
+      recoveries,
     };
   }
 

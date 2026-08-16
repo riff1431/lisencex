@@ -29,6 +29,17 @@ export class ProductCredential {
   })
   status: 'active' | 'rotated' | 'disabled';
 
+  @Prop({
+    type: String,
+    enum: ['production', 'sandbox'],
+    default: 'production',
+    index: true,
+  })
+  environment: 'production' | 'sandbox';
+
+  @Prop({ type: Boolean, default: false, index: true })
+  isSandbox: boolean;
+
   @Prop({ type: Date })
   rotatedAt?: Date;
 

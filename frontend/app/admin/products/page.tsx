@@ -47,6 +47,8 @@ import { Button } from '@/components/ui/button';
 import { apiRequest } from '@/lib/api';
 import { IntegrationPackageModal } from '@/components/integration-package-modal';
 import { LicenseVerificationModal } from '@/components/license-verification-modal';
+import { ProductImage } from '@/components/product-image';
+import { ProductMediaUploader } from '@/components/product-media-uploader';
 
 export default function AdminProductsPage() {
   const [products, setProducts] = useState<any[]>([]);
@@ -56,8 +58,10 @@ export default function AdminProductsPage() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [loading, setLoading] = useState(true);
 
-  // Available License Plans (fetched once)
+  // Available License Plans, Categories & Tags
   const [availablePlans, setAvailablePlans] = useState<any[]>([]);
+  const [availableCategories, setAvailableCategories] = useState<any[]>([]);
+  const [availableTags, setAvailableTags] = useState<any[]>([]);
 
   // Active form section tab inside Product Modal
   const [modalTab, setModalTab] = useState<'basic' | 'marketplace' | 'licensing' | 'technical'>('basic');
@@ -75,6 +79,16 @@ export default function AdminProductsPage() {
     status: 'active',
     marketplaceSource: 'own_marketplace', // 'own_marketplace' | 'envato' | 'both'
     
+    // Category & Tagging
+    primaryCategoryId: '',
+    categoryIds: [] as string[],
+    tags: [] as string[],
+    isFeatured: false,
+    isPopular: false,
+    isNewRelease: false,
+    isBestSeller: false,
+    badgeLabel: '',
+
     // Own Marketplace Pricing & Commercials
     price: 49,
     extendedPrice: 199,
@@ -84,9 +98,11 @@ export default function AdminProductsPage() {
     supportDurationDays: 180, // 6 Months
 
     // Media & Downloads
+    thumbnailUrl: '',
     iconUrl: '',
     logoUrl: '',
     bannerUrl: '',
+    screenshots: [] as string[],
     packageFileUrl: '',
     currentVersion: '1.0.0',
 
@@ -298,15 +314,21 @@ export default function AdminProductsPage() {
   }, [search]);
 
   useEffect(() => {
-    const fetchPlans = async () => {
+    const fetchMetadata = async () => {
       try {
-        const res = await apiRequest('/admin/license-plans/active');
-        setAvailablePlans(res.data || []);
+        const [plansRes, catsRes, tagsRes] = await Promise.all([
+          apiRequest('/admin/license-plans/active'),
+          apiRequest('/admin/categories'),
+          apiRequest('/admin/tags'),
+        ]);
+        setAvailablePlans(plansRes.data || []);
+        setAvailableCategories(catsRes.data || []);
+        setAvailableTags(tagsRes.data || []);
       } catch (err) {
-        console.error('Failed to fetch plans', err);
+        console.error('Failed to fetch plans/categories/tags', err);
       }
     };
-    fetchPlans();
+    fetchMetadata();
   }, []);
 
   const generateSlug = (name: string) => {
@@ -329,15 +351,25 @@ export default function AdminProductsPage() {
       productType: 'wordpress_plugin',
       status: 'active',
       marketplaceSource: 'own_marketplace',
+      primaryCategoryId: '',
+      categoryIds: [],
+      tags: [],
+      isFeatured: false,
+      isPopular: false,
+      isNewRelease: false,
+      isBestSeller: false,
+      badgeLabel: '',
       price: 49,
       extendedPrice: 199,
       currency: 'USD',
       defaultLicenseType: 'regular',
       licenseDurationDays: 0,
       supportDurationDays: 180,
+      thumbnailUrl: '',
       iconUrl: '',
       logoUrl: '',
       bannerUrl: '',
+      screenshots: [],
       packageFileUrl: '',
       currentVersion: '1.0.0',
       envatoItemId: '',
@@ -392,15 +424,25 @@ export default function AdminProductsPage() {
       productType: prod.productType || 'wordpress_plugin',
       status: prod.status || 'active',
       marketplaceSource: source,
+      primaryCategoryId: prod.primaryCategoryId?._id || prod.primaryCategoryId || '',
+      categoryIds: (prod.categoryIds || []).map((c: any) => c._id || c),
+      tags: prod.tags || [],
+      isFeatured: !!prod.isFeatured,
+      isPopular: !!prod.isPopular,
+      isNewRelease: !!prod.isNewRelease,
+      isBestSeller: !!prod.isBestSeller,
+      badgeLabel: prod.badgeLabel || '',
       price: prod.price ?? 49,
       extendedPrice: prod.extendedPrice ?? 199,
       currency: prod.currency || 'USD',
       defaultLicenseType: prod.licenseSettings?.defaultLicenseType || 'regular',
       licenseDurationDays: prod.licenseSettings?.licenseDurationDays ?? 0,
       supportDurationDays: prod.licenseSettings?.supportDurationDays ?? 180,
+      thumbnailUrl: prod.thumbnailUrl || '',
       iconUrl: prod.iconUrl || '',
       logoUrl: prod.logoUrl || '',
       bannerUrl: prod.bannerUrl || '',
+      screenshots: prod.screenshots || [],
       packageFileUrl: prod.packageFileUrl || '',
       currentVersion: prod.currentVersion || '1.0.0',
       envatoItemId: envatoChannel?.externalItemId || '',
@@ -467,12 +509,22 @@ export default function AdminProductsPage() {
         productType: productForm.productType,
         status: productForm.status,
         marketplaceSource: productForm.marketplaceSource,
+        primaryCategoryId: productForm.primaryCategoryId || null,
+        categoryIds: productForm.categoryIds || [],
+        tags: productForm.tags || [],
+        isFeatured: productForm.isFeatured,
+        isPopular: productForm.isPopular,
+        isNewRelease: productForm.isNewRelease,
+        isBestSeller: productForm.isBestSeller,
+        badgeLabel: productForm.badgeLabel,
         price: Number(productForm.price),
         extendedPrice: Number(productForm.extendedPrice),
         currency: productForm.currency,
+        thumbnailUrl: productForm.thumbnailUrl,
         iconUrl: productForm.iconUrl,
         logoUrl: productForm.logoUrl,
         bannerUrl: productForm.bannerUrl,
+        screenshots: productForm.screenshots,
         packageFileUrl: productForm.packageFileUrl,
         currentVersion: productForm.currentVersion,
         licenseSettings: {
@@ -799,28 +851,44 @@ export default function AdminProductsPage() {
                     <tr key={prod._id} className="hover:bg-secondary/20 transition-colors">
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-3">
-                          {prod.logoUrl || prod.iconUrl ? (
-                            <img
-                              src={prod.logoUrl || prod.iconUrl}
-                              alt={prod.name}
-                              className="h-9 w-9 rounded-xl object-cover border border-border shrink-0 bg-secondary"
-                            />
-                          ) : (
-                            <div className="h-9 w-9 rounded-xl bg-gradient-to-tr from-indigo-500/20 to-purple-500/20 border border-indigo-500/30 flex items-center justify-center text-indigo-500 shrink-0">
-                              <Box className="h-5 w-5" />
-                            </div>
-                          )}
+                          <ProductImage
+                            src={prod.iconUrl || prod.logoUrl || prod.thumbnailUrl}
+                            alt={prod.name}
+                            productType={prod.productType}
+                            variant="icon"
+                            className="h-9 w-9 rounded-xl shrink-0"
+                          />
                           <div>
-                            <div className="font-bold text-foreground flex items-center gap-2">
+                            <div className="font-bold text-foreground flex items-center gap-2 flex-wrap">
                               <span>{prod.name}</span>
                               {prod.sku && (
                                 <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-secondary text-muted-foreground">
                                   {prod.sku}
                                 </span>
                               )}
+                              {prod.isFeatured && (
+                                <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-500/20 text-amber-500 uppercase">
+                                  ⭐ Featured
+                                </span>
+                              )}
+                              {prod.isBestSeller && (
+                                <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-purple-500/20 text-purple-500 uppercase">
+                                  👑 Best Seller
+                                </span>
+                              )}
+                              {prod.badgeLabel && (
+                                <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-indigo-500/20 text-indigo-500 uppercase">
+                                  {prod.badgeLabel}
+                                </span>
+                              )}
                             </div>
-                            <div className="text-xs font-mono text-muted-foreground mt-0.5">
-                              {prod.slug}
+                            <div className="text-xs font-mono text-muted-foreground mt-0.5 flex items-center gap-2 flex-wrap">
+                              <span>{prod.slug}</span>
+                              {prod.primaryCategoryId && (
+                                <span className="px-1.5 py-0.2 rounded text-[10px] bg-secondary text-foreground font-semibold">
+                                  📁 {availableCategories.find((c) => c._id === (prod.primaryCategoryId?._id || prod.primaryCategoryId))?.name || 'Category'}
+                                </span>
+                              )}
                             </div>
                             {(prod.defaultLicensePlanId || prod.envatoLicensePlanId) && (
                               <div className="flex gap-1.5 mt-1 items-center flex-wrap">
@@ -1156,15 +1224,114 @@ export default function AdminProductsPage() {
                     </div>
                   </div>
 
-                  <div>
-                    <label className="font-semibold text-foreground block mb-1">Short Description</label>
-                    <input
-                      type="text"
-                      value={productForm.shortDescription}
-                      onChange={(e) => setProductForm({ ...productForm, shortDescription: e.target.value })}
-                      placeholder="One-line summary for customer portal and listings"
-                      className="w-full px-3 py-2 rounded-xl border border-border bg-background text-xs"
-                    />
+                  {/* Category & Tags Selector */}
+                  <div className="p-4 rounded-2xl border border-border bg-secondary/20 space-y-3.5">
+                    <h4 className="font-bold text-xs uppercase tracking-wider text-muted-foreground">
+                      Category & Tagging Classification
+                    </h4>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="font-semibold text-foreground block mb-1">Primary Category</label>
+                        <select
+                          value={productForm.primaryCategoryId}
+                          onChange={(e) => setProductForm({ ...productForm, primaryCategoryId: e.target.value })}
+                          className="w-full px-3 py-2 rounded-xl border border-border bg-background text-xs font-semibold"
+                        >
+                          <option value="">-- Select Primary Category --</option>
+                          {availableCategories.map((cat) => (
+                            <option key={cat._id} value={cat._id}>
+                              {cat.parentId ? `↳ ${cat.name}` : cat.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="font-semibold text-foreground block mb-1">Custom Promo Badge Label</label>
+                        <input
+                          type="text"
+                          value={productForm.badgeLabel}
+                          onChange={(e) => setProductForm({ ...productForm, badgeLabel: e.target.value })}
+                          placeholder="e.g. HOT, 50% OFF, NEW 2026"
+                          className="w-full px-3 py-2 rounded-xl border border-border bg-background text-xs"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Promotional Flags */}
+                    <div>
+                      <label className="font-semibold text-foreground block mb-1.5">Marketplace Highlight Badges</label>
+                      <div className="flex flex-wrap items-center gap-4">
+                        <label className="flex items-center gap-1.5 text-xs cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={productForm.isFeatured}
+                            onChange={(e) => setProductForm({ ...productForm, isFeatured: e.target.checked })}
+                            className="rounded text-indigo-600"
+                          />
+                          <span className="font-bold text-amber-500">⭐ Featured</span>
+                        </label>
+                        <label className="flex items-center gap-1.5 text-xs cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={productForm.isPopular}
+                            onChange={(e) => setProductForm({ ...productForm, isPopular: e.target.checked })}
+                            className="rounded text-indigo-600"
+                          />
+                          <span className="font-bold text-rose-500">🔥 Popular</span>
+                        </label>
+                        <label className="flex items-center gap-1.5 text-xs cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={productForm.isNewRelease}
+                            onChange={(e) => setProductForm({ ...productForm, isNewRelease: e.target.checked })}
+                            className="rounded text-indigo-600"
+                          />
+                          <span className="font-bold text-emerald-500">🚀 New Release</span>
+                        </label>
+                        <label className="flex items-center gap-1.5 text-xs cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={productForm.isBestSeller}
+                            onChange={(e) => setProductForm({ ...productForm, isBestSeller: e.target.checked })}
+                            className="rounded text-indigo-600"
+                          />
+                          <span className="font-bold text-purple-500">👑 Best Seller</span>
+                        </label>
+                      </div>
+                    </div>
+
+                    {/* Tags Multi-selector */}
+                    <div>
+                      <label className="font-semibold text-foreground block mb-1.5">Product Tags</label>
+                      <div className="flex flex-wrap gap-1.5">
+                        {availableTags.map((tag) => {
+                          const isSelected = productForm.tags?.includes(tag.slug);
+                          return (
+                            <button
+                              type="button"
+                              key={tag._id}
+                              onClick={() => {
+                                const current = productForm.tags || [];
+                                const updated = isSelected
+                                  ? current.filter((t) => t !== tag.slug)
+                                  : [...current, tag.slug];
+                                setProductForm({ ...productForm, tags: updated });
+                              }}
+                              className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all flex items-center gap-1 border ${
+                                isSelected
+                                  ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
+                                  : 'bg-secondary/40 text-muted-foreground border-border hover:text-foreground'
+                              }`}
+                            >
+                              <span>#{tag.name}</span>
+                              {isSelected && <Check className="h-3 w-3" />}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
                   </div>
 
                   <div>
@@ -1178,28 +1345,22 @@ export default function AdminProductsPage() {
                     />
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                      <label className="font-semibold text-foreground block mb-1">Product Icon / Logo URL</label>
-                      <input
-                        type="url"
-                        value={productForm.logoUrl}
-                        onChange={(e) => setProductForm({ ...productForm, logoUrl: e.target.value })}
-                        placeholder="https://cdn.example.com/icons/product.png"
-                        className="w-full px-3 py-2 rounded-xl border border-border bg-background text-xs"
-                      />
-                    </div>
-                    <div>
-                      <label className="font-semibold text-foreground block mb-1">Banner Image URL</label>
-                      <input
-                        type="url"
-                        value={productForm.bannerUrl}
-                        onChange={(e) => setProductForm({ ...productForm, bannerUrl: e.target.value })}
-                        placeholder="https://cdn.example.com/banners/product-banner.jpg"
-                        className="w-full px-3 py-2 rounded-xl border border-border bg-background text-xs"
-                      />
-                    </div>
-                  </div>
+                  {/* Dedicated Media & Artwork Uploader */}
+                  <ProductMediaUploader
+                    initialMedia={{
+                      thumbnailUrl: productForm.thumbnailUrl,
+                      iconUrl: productForm.iconUrl,
+                      logoUrl: productForm.logoUrl,
+                      bannerUrl: productForm.bannerUrl,
+                      screenshots: productForm.screenshots,
+                    }}
+                    onChange={(mediaState) => {
+                      setProductForm((prev) => ({
+                        ...prev,
+                        ...mediaState,
+                      }));
+                    }}
+                  />
                 </div>
               )}
 
@@ -2484,6 +2645,24 @@ export default function AdminProductsPage() {
           onClose={() => {
             setIsPackageModalOpen(false);
             setSelectedPackageProduct(null);
+          }}
+        />
+      )}
+
+      {/* LICENSE VERIFICATION & CERTIFICATION MODAL */}
+      {selectedVerifyProduct && (
+        <LicenseVerificationModal
+          productId={selectedVerifyProduct._id}
+          productName={selectedVerifyProduct.name}
+          isOpen={isVerifyModalOpen}
+          onClose={() => {
+            setIsVerifyModalOpen(false);
+            setSelectedVerifyProduct(null);
+          }}
+          onStatusChanged={(newStatus) => {
+            setProducts((prev) =>
+              prev.map((p) => (p._id === selectedVerifyProduct._id ? { ...p, integrationStatus: newStatus } : p))
+            );
           }}
         />
       )}

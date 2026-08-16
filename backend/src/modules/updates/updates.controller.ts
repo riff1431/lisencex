@@ -44,8 +44,6 @@ export class UpdatesController {
   }
 
   @Get('public/downloads/:token')
-  @UseGuards(ProductClientAuthGuard)
-  @Scopes('download')
   async downloadPackage(
     @Param('token') downloadToken: string,
     @Req() req: any,

@@ -202,4 +202,72 @@ export class AuthService {
 
     return { message: 'Password updated successfully. Please sign in again.' };
   }
+
+  async findAllUsers(query?: { search?: string; role?: string; page?: number; limit?: number }) {
+    const page = Math.max(1, Number(query?.page) || 1);
+    const limit = Math.max(1, Number(query?.limit) || 20);
+    const skip = (page - 1) * limit;
+
+    const filter: any = {};
+    if (query?.role) filter.role = query.role;
+    if (query?.search) {
+      filter.$or = [
+        { email: { $regex: query.search, $options: 'i' } },
+        { fullName: { $regex: query.search, $options: 'i' } },
+        { envatoUsername: { $regex: query.search, $options: 'i' } },
+      ];
+    }
+
+    const [items, total] = await Promise.all([
+      this.userModel
+        .find(filter)
+        .select('-passwordHash -refreshTokenHash')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      this.userModel.countDocuments(filter),
+    ]);
+
+    return {
+      items,
+      pagination: {
+        page,
+        limit,
+        total,
+        pages: Math.ceil(total / limit),
+      },
+    };
+  }
+
+  async findUserDetail(userId: string) {
+    const user = await this.userModel
+      .findById(new Types.ObjectId(userId))
+      .select('-passwordHash -refreshTokenHash')
+      .lean();
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+    return user;
+  }
+
+  async updateUserRoleOrStatus(
+    userId: string,
+    dto: { role?: UserRole; isActive?: boolean },
+  ) {
+    const user = await this.userModel.findById(new Types.ObjectId(userId));
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+    if (dto.role) user.role = dto.role;
+    if (dto.isActive !== undefined) user.isActive = dto.isActive;
+    await user.save();
+    return {
+      id: user._id.toString(),
+      email: user.email,
+      fullName: user.fullName,
+      role: user.role,
+      isActive: user.isActive,
+    };
+  }
 }

@@ -8,6 +8,7 @@ import { apiRequest } from '@/lib/api';
 import {
   LayoutDashboard, Box, KeyRound, Sparkles, Download,
   Settings, ShieldCheck, LogOut, AlertTriangle, ExternalLink, Bell,
+  ShoppingBag, Tag, LifeBuoy, MessageSquare, Receipt,
 } from 'lucide-react';
 
 export function UserSidebar() {
@@ -53,10 +54,40 @@ export function UserSidebar() {
       icon: Box,
     },
     {
+      href: '/dashboard/orders',
+      label: 'My Orders',
+      icon: ShoppingBag,
+    },
+    {
+      href: '/dashboard/purchases',
+      label: 'My Purchases',
+      icon: Tag,
+    },
+    {
+      href: '/dashboard/downloads',
+      label: 'Downloads & Releases',
+      icon: Download,
+    },
+    {
       href: '/dashboard/envato',
       label: 'Import Envato',
       icon: Sparkles,
       badge: <span className="ml-auto text-[10px] font-bold bg-[#79c41a]/15 text-[#79c41a] px-1.5 py-0.5 rounded-full">New</span>,
+    },
+    {
+      href: '/dashboard/support',
+      label: 'Support Tickets',
+      icon: LifeBuoy,
+    },
+    {
+      href: '/dashboard/reviews',
+      label: 'My Reviews',
+      icon: MessageSquare,
+    },
+    {
+      href: '/dashboard/billing',
+      label: 'Billing & Invoices',
+      icon: Receipt,
     },
     {
       href: '/dashboard/notifications',

@@ -14,6 +14,19 @@ export class LicensePlan {
   @Prop({ type: String, default: '' })
   description: string;
 
+  // ── Pricing ───────────────────────────────────────────────────────
+  @Prop({ type: Number, default: 0 })
+  price: number;
+
+  @Prop({ type: String, default: 'USD' })
+  currency: string;
+
+  @Prop({ type: Number, default: 0 })
+  sortOrder: number;
+
+  @Prop({ type: Boolean, default: false })
+  isFeatured: boolean;
+
   // ── Activation Rules ──────────────────────────────────────────────
   @Prop({ type: Number, default: 1, min: 0 }) // 0 = unlimited
   activationLimit: number;
@@ -60,6 +73,19 @@ export class LicensePlan {
 
   @Prop({ type: Boolean, default: true })
   downloadsEnabled: boolean;
+
+  // ── Recovery Rules ────────────────────────────────────────────────
+  @Prop({ type: Boolean, default: true })
+  recoveryEnabled: boolean;
+
+  @Prop({ type: Boolean, default: true })
+  autoApproveRecovery: boolean;
+
+  @Prop({ type: Number, default: 3 })
+  recoveryLimit: number;
+
+  @Prop({ type: Number, default: 720 }) // 720 hours = 30 days
+  recoveryCooldownHours: number;
 
   // ── Expiry & Renewal Rules ────────────────────────────────────────
   @Prop({ type: Boolean, default: true })

@@ -7,7 +7,7 @@ import {
   Box, KeyRound, Download, Sparkles, ArrowRight, Laptop2, Copy,
   CheckCircle2, ShieldCheck, Zap, ExternalLink, Eye, EyeOff,
   Activity, Clock, Globe2, Package, Tag, AlertTriangle,
-  CalendarDays, Infinity, TrendingUp, RefreshCw,
+  CalendarDays, Infinity, TrendingUp, RefreshCw, ShoppingBag,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { StatCard } from '@/components/stat-card';
@@ -107,16 +107,22 @@ export default function DashboardOverviewPage() {
           </div>
 
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 shrink-0">
+            <Link href="/store">
+              <Button className="gap-2 h-11 px-5 font-semibold bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-500/20">
+                <ShoppingBag className="h-4 w-4" />
+                Browse Store
+              </Button>
+            </Link>
             <Link href="/dashboard/envato">
-              <Button className="gap-2 h-11 px-5 font-semibold shadow-lg shadow-primary/20">
-                <Sparkles className="h-4 w-4" />
-                Import Envato Purchase
+              <Button variant="outline" className="gap-2 h-11 px-5 font-semibold border-border">
+                <Sparkles className="h-4 w-4 text-[#79c41a]" />
+                Import Envato Code
               </Button>
             </Link>
             <Link href="/dashboard/licenses">
-              <Button variant="outline" className="gap-2 h-11 px-5 font-semibold">
+              <Button variant="ghost" className="gap-2 h-11 px-4 font-semibold">
                 <KeyRound className="h-4 w-4" />
-                Manage Licenses
+                Licenses
               </Button>
             </Link>
           </div>

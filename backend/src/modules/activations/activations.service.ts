@@ -3,6 +3,7 @@ import {
   NotFoundException,
   BadRequestException,
   ForbiddenException,
+  Logger,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
@@ -67,6 +68,8 @@ import {
 
 @Injectable()
 export class ActivationsService {
+  private readonly logger = new Logger(ActivationsService.name);
+
   constructor(
     @InjectModel(Activation.name)
     private activationModel: Model<ActivationDocument>,
@@ -91,7 +94,7 @@ export class ActivationsService {
     return `ACT-${raw}`;
   }
 
-  private resolveEffectiveSettings(product: any, license?: any) {
+  resolveEffectiveSettings(product: any, license?: any) {
     const resolvedPlan = license?.licensePlanId as any; // populated plan object
     const overrides = product?.licenseSettingsOverrides || {};
     const productSettings = product?.licenseSettings || {};
@@ -127,6 +130,67 @@ export class ActivationsService {
       blockSupportOnExpiry: resolveField('blockSupportOnExpiry', true),
       blockActivationsOnExpiry: resolveField('blockActivationsOnExpiry', true),
       reminderThresholdDays: resolveField('reminderThresholdDays', 30),
+      recoveryEnabled: resolveField('recoveryEnabled', true),
+      autoApproveRecovery: resolveField('autoApproveRecovery', true),
+      recoveryLimit: resolveField('recoveryLimit', 3),
+      recoveryCooldownHours: resolveField('recoveryCooldownHours', 720),
+    };
+  }
+
+  computeHealthStatus(activation: any, product: any, license: any) {
+    if (activation.status === ActivationStatus.REVOKED || activation.status === ActivationStatus.DEACTIVATED) {
+      return { health: 'Revoked', flagged: false };
+    }
+    if (license?.status === LicenseStatus.REVOKED) {
+      return { health: 'Revoked', flagged: false };
+    }
+
+    if (activation.status === ActivationStatus.SUSPENDED) {
+      return { health: 'Suspended', flagged: false };
+    }
+    if (license?.status === LicenseStatus.SUSPENDED || license?.status === LicenseStatus.BLOCKED) {
+      return { health: 'Suspended', flagged: false };
+    }
+
+    const settings = this.resolveEffectiveSettings(product, license);
+    const intervalMs = (settings.validationIntervalHours || 24) * 3600 * 1000;
+    const graceMs = (settings.offlineGracePeriodDays || 7) * 24 * 3600 * 1000;
+
+    const lastValidated = activation.lastValidatedAt ? new Date(activation.lastValidatedAt).getTime() : 0;
+    const now = Date.now();
+    const timeSinceValidation = now - lastValidated;
+
+    let health = 'Healthy';
+    let flagged = false;
+
+    if (timeSinceValidation > (intervalMs + graceMs)) {
+      health = 'Offline';
+      flagged = true;
+    } else if (timeSinceValidation > intervalMs) {
+      health = 'Validation Overdue';
+      flagged = true;
+    }
+
+    const isProductOutdated = product && product.currentVersion && activation.productVersion && activation.productVersion !== product.currentVersion;
+    
+    const latestSdkVersions: Record<string, string> = {
+      typescript: '1.0.0',
+      wordpress: '1.0.0',
+      php: '1.0.0',
+    };
+    const latestSdk = latestSdkVersions[activation.sdkType] || '1.0.0';
+    const isSdkOutdated = activation.sdkVersion && activation.sdkVersion !== latestSdk;
+
+    if (health === 'Healthy' && (isProductOutdated || isSdkOutdated)) {
+      health = 'Outdated';
+    }
+
+    return {
+      health,
+      flagged,
+      isProductOutdated: Boolean(isProductOutdated),
+      isSdkOutdated: Boolean(isSdkOutdated),
+      latestSdkVersion: latestSdk,
     };
   }
 
@@ -144,6 +208,13 @@ export class ActivationsService {
       throw new BadRequestException({
         code: ErrorCode.PRODUCT_DISABLED,
         message: `Product is currently ${product.status}`,
+      });
+    }
+
+    if (product.emergencyKillSwitch?.disableNewActivations || product.emergencyKillSwitch?.isProductSuspended) {
+      throw new BadRequestException({
+        code: 'PRODUCT_ACTIVATIONS_DISABLED',
+        message: `New activations for this product have been temporarily disabled by administrator. Reason: ${product.emergencyKillSwitch?.activeReason || 'Emergency maintenance in progress'}`,
       });
     }
 
@@ -263,8 +334,17 @@ export class ActivationsService {
 
     if (existingActivation) {
       existingActivation.lastValidatedAt = new Date();
+      existingActivation.lastSeenAt = new Date();
       existingActivation.productVersion = dto.productVersion || existingActivation.productVersion;
+      if (dto.sdkVersion) existingActivation.sdkVersion = dto.sdkVersion;
+      if (dto.sdkType) existingActivation.sdkType = dto.sdkType;
+      existingActivation.apiHealth = 'healthy';
       if (clientIp) existingActivation.ip = clientIp;
+
+      const healthResult = this.computeHealthStatus(existingActivation, product, license);
+      existingActivation.healthStatus = healthResult.health;
+      existingActivation.flaggedForReview = healthResult.flagged;
+
       await existingActivation.save();
 
       const tokenData = this.tokenService.signActivationToken(
@@ -290,6 +370,7 @@ export class ActivationsService {
           normalizedDomain: existingActivation.normalizedDomain,
           environment: existingActivation.environment,
           productVersion: existingActivation.productVersion,
+          healthStatus: existingActivation.healthStatus,
         },
         license: {
           licenseKey: license.licenseKey,
@@ -310,6 +391,7 @@ export class ActivationsService {
         offlineGracePeriodDays,
         cachedUntil,
         gracePeriodUntil,
+        ...(healthResult.isSdkOutdated ? { sdkWarning: `A new version of the LicenseNest SDK is available. Please upgrade your integration to v${healthResult.latestSdkVersion}.` } : {}),
       };
     }
 
@@ -361,8 +443,17 @@ export class ActivationsService {
       { upsert: true, returnDocument: 'after' },
     );
 
+    const tempActivation = {
+      status: ActivationStatus.ACTIVE,
+      lastValidatedAt: new Date(),
+      productVersion: dto.productVersion || product.currentVersion,
+      sdkVersion: dto.sdkVersion || undefined,
+      sdkType: dto.sdkType || undefined,
+    };
+    const healthResult = this.computeHealthStatus(tempActivation, product, license);
+
     const activationId = this.generateActivationId();
-    const activation = await this.activationModel.create({
+    const activation: any = await this.activationModel.create({
       activationId,
       licenseId: license._id,
       productId: product._id,
@@ -374,10 +465,16 @@ export class ActivationsService {
       environment,
       status: ActivationStatus.ACTIVE,
       productVersion: dto.productVersion || product.currentVersion,
+      sdkVersion: dto.sdkVersion || undefined,
+      sdkType: dto.sdkType || undefined,
+      apiHealth: 'healthy',
+      healthStatus: healthResult.health,
+      flaggedForReview: healthResult.flagged,
       ip: clientIp,
       userAgent,
       activatedAt: new Date(),
       lastValidatedAt: new Date(),
+      lastSeenAt: new Date(),
     });
 
     if (shouldCountLimit) {
@@ -452,6 +549,7 @@ export class ActivationsService {
         normalizedDomain,
         environment,
         productVersion: activation.productVersion,
+        healthStatus: activation.healthStatus,
       },
       license: {
         licenseKey: license.licenseKey,
@@ -472,6 +570,7 @@ export class ActivationsService {
       offlineGracePeriodDays,
       cachedUntil,
       gracePeriodUntil,
+      ...(healthResult.isSdkOutdated ? { sdkWarning: `A new version of the LicenseNest SDK is available. Please upgrade your integration to v${healthResult.latestSdkVersion}.` } : {}),
     };
   }
 
@@ -526,6 +625,15 @@ export class ActivationsService {
       };
     }
 
+    if (product.emergencyKillSwitch?.disableValidation || product.emergencyKillSwitch?.isProductSuspended) {
+      await this.logValidation(dto, 'PRODUCT_VALIDATIONS_DISABLED', clientIp, payload.licenseId);
+      return {
+        valid: false,
+        status: 'PRODUCT_VALIDATIONS_DISABLED',
+        message: `Validation for this product has been temporarily disabled by administrator. Reason: ${product.emergencyKillSwitch?.activeReason || 'Emergency maintenance in progress'}`,
+      };
+    }
+
     const license = await this.licenseModel.findById(payload.licenseId).populate('licensePlanId');
     if (!license) {
       await this.logValidation(dto, 'LICENSE_NOT_FOUND', clientIp);
@@ -536,25 +644,37 @@ export class ActivationsService {
       };
     }
 
-    if (license.status === LicenseStatus.SUSPENDED) {
-      await this.logValidation(dto, 'SUSPENDED', clientIp, license._id);
-      return {
-        valid: false,
-        status: 'SUSPENDED',
-        message: 'This license has been suspended by administration',
-      };
-    }
+    const activation = await this.activationModel.findOne({
+      licenseId: license._id,
+      installationId: dto.installationId,
+    });
 
-    if (license.status === LicenseStatus.REVOKED) {
+    if (license.status === LicenseStatus.REVOKED || activation?.status === ActivationStatus.REVOKED) {
+      const isCritical = license.isCriticalRevoked || activation?.isCriticalRevoked;
+      const reason = license.revocationReason || activation?.revocationReason || 'License revoked by administrator';
       await this.logValidation(dto, 'REVOKED', clientIp, license._id);
       return {
         valid: false,
         status: 'REVOKED',
-        message: 'This license has been revoked',
+        isRevoked: true,
+        isCriticalRevoked: isCritical,
+        forceDeactivate: true,
+        message: `This license has been revoked. Reason: ${reason}`,
       };
     }
 
-    if (license.status === LicenseStatus.BLOCKED) {
+    if (license.status === LicenseStatus.SUSPENDED || activation?.status === ActivationStatus.SUSPENDED) {
+      const reason = license.suspendedReason || activation?.suspendedReason || 'License suspended by administration';
+      await this.logValidation(dto, 'SUSPENDED', clientIp, license._id);
+      return {
+        valid: false,
+        status: 'SUSPENDED',
+        isSuspended: true,
+        message: `This license has been suspended by administration. Reason: ${reason}`,
+      };
+    }
+
+    if (license.status === LicenseStatus.BLOCKED || activation?.status === ActivationStatus.BLOCKED) {
       await this.logValidation(dto, 'BLOCKED', clientIp, license._id);
       return {
         valid: false,
@@ -601,12 +721,7 @@ export class ActivationsService {
       };
     }
 
-    const activation = await this.activationModel.findOne({
-      activationId: payload.activationId,
-      status: ActivationStatus.ACTIVE,
-    });
-
-    if (!activation) {
+    if (!activation || activation.status !== ActivationStatus.ACTIVE) {
       await this.logValidation(dto, 'ACTIVATION_DEACTIVATED', clientIp, license._id);
       return {
         valid: false,
@@ -616,8 +731,18 @@ export class ActivationsService {
     }
 
     activation.lastValidatedAt = new Date();
+    activation.lastSeenAt = new Date();
     if (dto.productVersion) activation.productVersion = dto.productVersion;
+    if (dto.sdkVersion) activation.sdkVersion = dto.sdkVersion;
+    if (dto.sdkType) activation.sdkType = dto.sdkType;
+    activation.apiHealth = 'healthy';
+    activation.forceRevalidate = false;
     if (clientIp) activation.ip = clientIp;
+
+    const healthResult = this.computeHealthStatus(activation, product, license);
+    activation.healthStatus = healthResult.health;
+    activation.flaggedForReview = healthResult.flagged;
+
     await activation.save();
 
     await this.installationModel.updateOne(
@@ -668,14 +793,35 @@ export class ActivationsService {
       offlineGracePeriodDays,
       cachedUntil,
       gracePeriodUntil,
+      healthStatus: activation.healthStatus,
+      ...(healthResult.isSdkOutdated ? { sdkWarning: `A new version of the LicenseNest SDK is available. Please upgrade your integration to v${healthResult.latestSdkVersion}.` } : {}),
     };
   }
 
   async deactivate(dto: DeactivateLicenseDto, actorEmail?: string, clientIp?: string, authProductId?: any) {
-    const activation = await this.activationModel.findOne({
+    const query: any = {
       installationId: dto.installationId,
       status: ActivationStatus.ACTIVE,
-    });
+    };
+    if (authProductId) {
+      query.productId = new Types.ObjectId(authProductId.toString());
+    }
+
+    let activation = await this.activationModel.findOne(query);
+
+    if (!activation && dto.token) {
+      try {
+        const payload = this.tokenService.verifyActivationToken(dto.token);
+        if (payload?.activationId) {
+          activation = await this.activationModel.findOne({
+            activationId: payload.activationId,
+            status: ActivationStatus.ACTIVE,
+          });
+        }
+      } catch (e) {
+        // Fallback if token is expired or invalid
+      }
+    }
 
     if (!activation) {
       throw new NotFoundException({
@@ -1001,13 +1147,66 @@ export class ActivationsService {
     };
   }
 
-  async findAll(query?: { search?: string; status?: string; page?: number; limit?: number }) {
+  async sync(dto: ValidateLicenseDto, clientIp?: string) {
+    return this.validate(dto, clientIp);
+  }
+
+  async adminForceRevalidate(activationId: string, actorEmail: string) {
+    const activation = await this.activationModel.findOne({ activationId });
+    if (!activation) {
+      throw new NotFoundException('Activation record not found');
+    }
+
+    activation.forceRevalidate = true;
+    activation.lastSeenAt = new Date();
+    await activation.save();
+
+    const product = await this.productModel.findById(activation.productId);
+    const activeToken = await this.tokenModel.findOne({ activationId: activation.activationId, isRevoked: false });
+
+    if (activation.installationUrl && activeToken) {
+      const sig = crypto.createHmac('sha256', activeToken.token).update(activation.activationId).digest('hex');
+      const pingUrl = `${activation.installationUrl.replace(/\/$/, '')}/?licensenest_revalidate=1&activation_id=${activation.activationId}&sig=${sig}`;
+      
+      // Fire-and-forget HTTP call to client
+      fetch(pingUrl)
+        .then(async (res) => {
+          this.logger.log(`Remote revalidate ping to ${activation.domain} returned HTTP ${res.status}`);
+        })
+        .catch((err) => {
+          this.logger.warn(`Remote revalidate ping to ${activation.domain} failed: ${err.message}`);
+        });
+    }
+
+    await this.auditLogModel.create({
+      actorEmail,
+      action: 'FORCE_REVALIDATION_TRIGGERED',
+      targetType: 'activation',
+      targetId: activation.activationId,
+      after: { domain: activation.domain },
+    });
+
+    return {
+      success: true,
+      message: 'Force revalidate triggered successfully. Client pinged if URL accessible.',
+    };
+  }
+
+  async findAll(query?: { search?: string; status?: string; healthStatus?: string; productId?: string; page?: number; limit?: number }) {
     const page = Math.max(1, Number(query?.page) || 1);
     const limit = Math.max(1, Number(query?.limit) || 20);
     const skip = (page - 1) * limit;
 
     const filter: any = {};
     if (query?.status) filter.status = query.status;
+    if (query?.productId) {
+      try {
+        filter.productId = new Types.ObjectId(query.productId);
+      } catch (e) {
+        // Ignore invalid ObjectId
+      }
+    }
+    if (query?.healthStatus && query.healthStatus !== 'all') filter.healthStatus = query.healthStatus;
     if (query?.search) {
       filter.$or = [
         { domain: { $regex: query.search, $options: 'i' } },
@@ -1017,17 +1216,22 @@ export class ActivationsService {
       ];
     }
 
-    const [items, total] = await Promise.all([
+    const [rawItems, total] = await Promise.all([
       this.activationModel
         .find(filter)
-        .populate('productId', 'name slug logoUrl productType currentVersion')
+        .populate('productId', 'name slug logoUrl productType currentVersion latestStableVersion')
         .populate({
           path: 'licenseId',
-          select: 'licenseKey status activationLimit currentActivationCount expiresAt supportExpiresAt source',
-          populate: {
-            path: 'purchaseId',
-            select: 'orderNumber externalPurchaseCode buyerUsername source purchasedAt',
-          },
+          select: 'licenseKey status activationLimit currentActivationCount expiresAt supportExpiresAt source licensePlanId',
+          populate: [
+            {
+              path: 'purchaseId',
+              select: 'orderNumber externalPurchaseCode buyerUsername source purchasedAt',
+            },
+            {
+              path: 'licensePlanId',
+            }
+          ]
         })
         .populate('userId', 'email fullName envatoUsername')
         .sort({ createdAt: -1 })
@@ -1036,6 +1240,15 @@ export class ActivationsService {
         .lean(),
       this.activationModel.countDocuments(filter),
     ]);
+
+    const items = rawItems.map((item: any) => {
+      const healthResult = this.computeHealthStatus(item, item.productId, item.licenseId);
+      return {
+        ...item,
+        healthStatus: healthResult.health,
+        flaggedForReview: healthResult.flagged,
+      };
+    });
 
     return {
       items,
