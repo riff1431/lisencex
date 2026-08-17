@@ -29,6 +29,10 @@ import {
 } from '../../database/schemas/download-log.schema';
 import { TokenService } from '../token/token.service';
 import { LicenseStatus } from '../../common/enums/app.enums';
+import {
+  signDownloadToken,
+  verifyDownloadToken as verifyDownloadTokenUtil,
+} from '../../common/utils/download-token.util';
 
 @Injectable()
 export class UpdatesService {
@@ -274,14 +278,13 @@ export class UpdatesService {
       ...data,
       exp: Math.floor(Date.now() / 1000) + validityMinutes * 60,
     };
-    return Buffer.from(JSON.stringify(payload)).toString('base64url');
+    return signDownloadToken(payload);
   }
 
   private verifyDownloadToken(token: string): any {
-    const json = Buffer.from(token, 'base64url').toString('utf-8');
-    const data = JSON.parse(json);
-    if (data.exp && data.exp < Math.floor(Date.now() / 1000)) {
-      throw new Error('Expired');
+    const data = verifyDownloadTokenUtil(token);
+    if (!data) {
+      throw new ForbiddenException('Download link is invalid or has expired');
     }
     return data;
   }

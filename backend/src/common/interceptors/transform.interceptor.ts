@@ -3,11 +3,14 @@ import {
   NestInterceptor,
   ExecutionContext,
   CallHandler,
+  StreamableFile,
 } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
 import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
 import * as crypto from 'crypto';
 import { getApiResponseViewerTemplate } from '../templates/api-response-viewer.template';
+import { SKIP_TRANSFORM_KEY } from '../decorators/skip-transform.decorator';
 
 export interface ApiResponse<T> {
   success: boolean;
@@ -21,15 +24,29 @@ export interface ApiResponse<T> {
 export class TransformInterceptor<T>
   implements NestInterceptor<T, any>
 {
+  constructor(private readonly reflector: Reflector) {}
+
   intercept(
     context: ExecutionContext,
     next: CallHandler,
   ): Observable<any> {
+    // Routes that stream files / write the raw response themselves must not
+    // be wrapped — doing so after headers are sent throws
+    // ERR_HTTP_HEADERS_SENT (seen on /public/downloads/:token).
+    const skipTransform =
+      this.reflector.getAllAndOverride<boolean>(SKIP_TRANSFORM_KEY, [
+        context.getHandler(),
+        context.getClass(),
+      ]) ?? false;
+    if (skipTransform) {
+      return next.handle();
+    }
+
     const startTime = performance.now();
     const requestId = crypto.randomUUID();
     const request = context.switchToHttp().getRequest();
     const response = context.switchToHttp().getResponse();
-    
+
     response.setHeader('X-Request-ID', requestId);
 
     return next.handle().pipe(
@@ -37,6 +54,12 @@ export class TransformInterceptor<T>
         // If response is already text/html (like docs portal), pass through directly
         const contentType = response.getHeader('Content-Type') || '';
         if (typeof resData === 'string' && contentType.toString().includes('text/html')) {
+          return resData;
+        }
+
+        // Belt-and-braces: if the controller already wrote the response
+        // (raw @Res() usage without @SkipTransform), never touch it again.
+        if (response.headersSent || resData instanceof StreamableFile) {
           return resData;
         }
 
@@ -68,7 +91,7 @@ export class TransformInterceptor<T>
         if (isBrowser) {
           const latencyMs = Math.round(performance.now() - startTime);
           const clientIp = request.ip || request.connection?.remoteAddress || '127.0.0.1';
-          
+
           response.setHeader('Content-Type', 'text/html');
           return getApiResponseViewerTemplate(
             request.url,

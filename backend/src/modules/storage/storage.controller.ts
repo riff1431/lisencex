@@ -12,6 +12,7 @@ import {
   Res,
   HttpCode,
   HttpStatus,
+  NotFoundException,
 } from '@nestjs/common';
 import { type Request, type Response } from 'express';
 import { StorageService } from './storage.service';
@@ -22,6 +23,7 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { UserRole } from '../../common/enums/app.enums';
+import { SkipTransform } from '../../common/decorators/skip-transform.decorator';
 
 @Controller()
 export class StorageController {
@@ -130,7 +132,12 @@ export class StorageController {
 
   // ---------------- PUBLIC / SIGNED SERVING ----------------
 
+  // Admin-only: this can serve ANY stored file, including PRIVATE ones
+  // (license-gated packages). Previously it was unauthenticated.
   @Get('storage/download/:fileId')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
+  @SkipTransform()
   async downloadFile(
     @Param('fileId') fileId: string,
     @Res() res: Response,
@@ -147,40 +154,56 @@ export class StorageController {
   }
 
   @Get('public/storage/serve/:fileId')
+  @SkipTransform()
   async servePublicFile(
     @Param('fileId') fileId: string,
     @Res() res: Response,
   ) {
-    const { buffer, mimeType } = await this.storageService.getFileBuffer(fileId);
+    const result = await this.storageService.getFileBuffer(fileId);
+    assertPubliclyServable(result);
 
-    res.setHeader('Content-Type', mimeType || 'application/octet-stream');
+    res.setHeader('Content-Type', result.mimeType || 'application/octet-stream');
     res.setHeader('Cache-Control', 'public, max-age=86400');
-    res.send(buffer);
+    res.send(result.buffer);
   }
 
   @Get('public/media/:filename')
+  @SkipTransform()
   async servePublicMedia(
     @Param('filename') filename: string,
     @Res() res: Response,
   ) {
-    const { buffer, mimeType } = await this.storageService.getFileBuffer(filename);
+    const result = await this.storageService.getFileBuffer(filename);
+    assertPubliclyServable(result);
 
-    res.setHeader('Content-Type', mimeType || 'application/octet-stream');
+    res.setHeader('Content-Type', result.mimeType || 'application/octet-stream');
     res.setHeader('Cache-Control', 'public, max-age=86400');
-    res.send(buffer);
+    res.send(result.buffer);
   }
 
   @Get('public/media/*')
+  @SkipTransform()
   async serveWildcardPublicMedia(
     @Req() req: Request,
     @Res() res: Response,
   ) {
     const pathPart = req.params[0] || (req.url.split('/public/media/')[1] || '');
     const cleanPath = decodeURIComponent(pathPart.split('?')[0]);
-    const { buffer, mimeType } = await this.storageService.getFileBuffer(cleanPath);
+    const result = await this.storageService.getFileBuffer(cleanPath);
+    assertPubliclyServable(result);
 
-    res.setHeader('Content-Type', mimeType || 'application/octet-stream');
+    res.setHeader('Content-Type', result.mimeType || 'application/octet-stream');
     res.setHeader('Cache-Control', 'public, max-age=86400');
-    res.send(buffer);
+    res.send(result.buffer);
+  }
+}
+
+/**
+ * Public serving routes must never expose files stored with PRIVATE
+ * visibility (license-gated packages, internal documents).
+ */
+function assertPubliclyServable(result: { file?: { visibility?: FileVisibility } }) {
+  if (result.file?.visibility === FileVisibility.PRIVATE) {
+    throw new NotFoundException('File not found');
   }
 }

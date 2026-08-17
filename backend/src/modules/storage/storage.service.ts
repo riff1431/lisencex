@@ -28,7 +28,7 @@ import { S3StorageProvider } from './providers/s3-storage.provider';
 import { R2StorageProvider } from './providers/r2-storage.provider';
 import { MinioStorageProvider } from './providers/minio-storage.provider';
 import { existsSync, readFileSync } from 'fs';
-import { join } from 'path';
+import { join, resolve, sep } from 'path';
 
 @Injectable()
 export class StorageService implements OnModuleInit {
@@ -419,7 +419,27 @@ export class StorageService implements OnModuleInit {
    * Get Raw File Buffer with multi-strategy resolution
    */
   async getFileBuffer(fileIdOrPath: string): Promise<{ buffer: Buffer; file?: StoredFileDocument; mimeType: string; filename: string }> {
-    const cleanId = decodeURIComponent(fileIdOrPath).replace(/^(\.\.[\/\\])+/, '');
+    let cleanId: string;
+    try {
+      cleanId = decodeURIComponent(fileIdOrPath);
+    } catch {
+      throw new NotFoundException('Invalid file identifier');
+    }
+
+    // Path traversal guard. This value ultimately reaches the filesystem in
+    // step 3 below (`join(cwd, 'uploads', cleanId)`); stripping only LEADING
+    // `../` sequences previously allowed `a/../../.env` to escape the uploads
+    // dir and read arbitrary files (including the deployed .env).
+    // Legitimate storage keys may contain `/` but never `..` segments,
+    // null bytes, or absolute paths.
+    if (
+      cleanId.includes('..') ||
+      cleanId.includes('\0') ||
+      cleanId.startsWith('/') ||
+      /^[a-zA-Z]:[\\/]/.test(cleanId)
+    ) {
+      throw new NotFoundException('Invalid file path');
+    }
 
     // 1. Check StoredFile schema
     const file = await this.fileModel.findOne({
@@ -467,7 +487,15 @@ export class StorageService implements OnModuleInit {
 
     // 3. Fallback: Search local uploads folder directly
     const localUploadsDir = join(process.cwd(), 'uploads');
-    const directPath = join(localUploadsDir, cleanId);
+    const directPath = resolve(localUploadsDir, cleanId);
+    // Defense in depth: whatever survived the input checks above, the
+    // resolved path must still resolve strictly inside the uploads root.
+    if (
+      directPath !== localUploadsDir &&
+      !directPath.startsWith(localUploadsDir + sep)
+    ) {
+      throw new NotFoundException(`Requested file not found`);
+    }
     if (existsSync(directPath)) {
       const buffer = readFileSync(directPath);
       const ext = extname(cleanId).toLowerCase();

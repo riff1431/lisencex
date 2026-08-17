@@ -15,6 +15,7 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { ProductClientAuthGuard } from '../../common/guards/product-client-auth.guard';
 import { Scopes } from '../../common/decorators/scopes.decorator';
+import { SkipTransform } from '../../common/decorators/skip-transform.decorator';
 
 @Controller()
 export class UpdatesController {
@@ -44,6 +45,7 @@ export class UpdatesController {
   }
 
   @Get('public/downloads/:token')
+  @SkipTransform()
   async downloadPackage(
     @Param('token') downloadToken: string,
     @Req() req: any,

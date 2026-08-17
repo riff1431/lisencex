@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as crypto from 'crypto';
 import {
@@ -60,6 +60,15 @@ export class SimulatorGatewayProvider implements IPaymentGateway {
     transaction: PaymentTransaction,
     options?: Record<string, any>,
   ): Promise<PaymentSessionResult> {
+    // The simulator fulfills orders with no money moving. Its webhook path is
+    // already prod-gated, but the customer completion flow bypasses webhooks
+    // entirely — so the session must never start in production.
+    if (isProduction()) {
+      throw new BadRequestException(
+        'Simulator payment gateway is disabled in production',
+      );
+    }
+
     const simulatedToken = this.generateSimulatedToken(
       transaction.transactionId,
       order.orderNumber,

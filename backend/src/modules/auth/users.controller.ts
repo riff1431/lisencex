@@ -11,7 +11,9 @@ import { AuthService } from './auth.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { UserRole } from '../../common/enums/app.enums';
+import { UpdateUserAdminDto } from './dto/update-user-admin.dto';
 
 @Controller('admin/users')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -32,8 +34,13 @@ export class UsersController {
   @Patch(':id')
   async updateStatus(
     @Param('id') id: string,
-    @Body() body: { role?: UserRole; isActive?: boolean },
+    @Body() dto: UpdateUserAdminDto,
+    @CurrentUser('id') actorId: string,
+    @CurrentUser('role') actorRole: UserRole,
   ) {
-    return this.authService.updateUserRoleOrStatus(id, body);
+    return this.authService.updateUserRoleOrStatus(id, dto, {
+      actorId,
+      actorRole,
+    });
   }
 }

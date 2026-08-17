@@ -41,15 +41,31 @@ export function getApiResponseViewerTemplate(
     dbStatusColor = 'bg-amber-500';
   }
 
-  const serializedData = JSON.stringify(resData, null, 2);
-  const serializedHeaders = JSON.stringify(requestHeaders || {}, null, 2);
+  // Data and headers can echo attacker-controlled input (validation errors,
+  // Referer/User-Agent). Inside a <script> block, `</script>` would terminate
+  // the tag and inject markup — escape `<` as a JS unicode escape, which is
+  // valid inside JSON string literals and inert in HTML.
+  const toSafeJsonLiteral = (value: any) =>
+    JSON.stringify(value, null, 2).replace(/</g, '\\u003c');
+  const serializedData = toSafeJsonLiteral(resData);
+  const serializedHeaders = toSafeJsonLiteral(requestHeaders);
+
+  const escapeHtml = (value: string) =>
+    String(value)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  const safeUrl = escapeHtml(url);
+  const safeMethod = escapeHtml(method);
+  const safeClientIp = escapeHtml(clientIp || '127.0.0.1');
 
   return `<!DOCTYPE html>
 <html lang="en" class="h-full">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>API Test Report - ${method} ${url}</title>
+  <title>API Test Report - ${safeMethod} ${safeUrl}</title>
   <!-- Google Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -161,7 +177,7 @@ export function getApiResponseViewerTemplate(
       <!-- Client IP Card -->
       <div class="p-4 border border-space-800 rounded-xl bg-space-900/40 space-y-1">
         <p class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Client IP</p>
-        <p class="text-base font-bold text-white truncate font-mono">${clientIp || '127.0.0.1'}</p>
+        <p class="text-base font-bold text-white truncate font-mono">${safeClientIp}</p>
       </div>
     </div>
 
@@ -176,11 +192,11 @@ export function getApiResponseViewerTemplate(
           <div class="space-y-3 text-xs">
             <div class="flex justify-between border-b border-space-800/50 pb-2">
               <span class="text-slate-400">Request Method</span>
-              <span class="px-2 py-0.5 rounded text-[10px] font-bold border ${methodBg}">${method}</span>
+              <span class="px-2 py-0.5 rounded text-[10px] font-bold border ${methodBg}">${safeMethod}</span>
             </div>
             <div class="flex justify-between border-b border-space-800/50 pb-2">
               <span class="text-slate-400">Request Path</span>
-              <span class="font-mono text-slate-200 select-all">${url}</span>
+              <span class="font-mono text-slate-200 select-all">${safeUrl}</span>
             </div>
             <div class="flex justify-between border-b border-space-800/50 pb-2">
               <span class="text-slate-400">Response Type</span>

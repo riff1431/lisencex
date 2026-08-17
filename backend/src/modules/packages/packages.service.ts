@@ -32,6 +32,10 @@ import {
 } from '../../database/schemas/activation.schema';
 import { TokenService } from '../token/token.service';
 import { ZipPackageValidator } from '../../common/utils/zip-validator.util';
+import {
+  signDownloadToken,
+  verifyDownloadToken,
+} from '../../common/utils/download-token.util';
 import { ProductType, ReleaseChannel, LicenseStatus } from '../../common/enums/app.enums';
 
 export interface UploadPackageDto {
@@ -354,7 +358,7 @@ export class PackagesService {
       exp:       Math.floor(Date.now() / 1000) + 900, // 15 minutes
     };
 
-    const token = Buffer.from(JSON.stringify(payload)).toString('base64url');
+    const token = signDownloadToken(payload);
     return {
       token,
       downloadUrl: `/api/v1/packages/download/${token}`,
@@ -364,14 +368,8 @@ export class PackagesService {
   }
 
   async processDownload(token: string, clientIp?: string, userAgent?: string) {
-    let payload: any;
-    try {
-      const json = Buffer.from(token, 'base64url').toString('utf-8');
-      payload = JSON.parse(json);
-      if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) {
-        throw new Error('expired');
-      }
-    } catch {
+    const payload = verifyDownloadToken(token);
+    if (!payload) {
       throw new ForbiddenException('Download link is invalid or has expired');
     }
 
@@ -416,7 +414,7 @@ export class PackagesService {
       exp: Math.floor(Date.now() / 1000) + 3600, // 1 hour for admin
     };
 
-    const token = Buffer.from(JSON.stringify(payload)).toString('base64url');
+    const token = signDownloadToken(payload);
     return { token, downloadUrl: `/api/v1/packages/download/${token}`, expiresInSeconds: 3600 };
   }
 

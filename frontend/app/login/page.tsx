@@ -1,10 +1,10 @@
 'use client';
 
-import React, { useState, useEffect, Suspense } from 'react';
+import React, { useState, Suspense } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
-import { Key, ShieldCheck, User, Sparkles, AlertCircle } from 'lucide-react';
+import { Key, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 function LoginForm() {
@@ -12,17 +12,17 @@ function LoginForm() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  // Demo quick-fill exposes real seeded credentials — local development only.
-  const [isLocalDev, setIsLocalDev] = useState(false);
   const { login } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
   const callbackUrl = searchParams.get('callbackUrl');
 
-  useEffect(() => {
-    const host = window.location.hostname;
-    setIsLocalDev(host === 'localhost' || host === '127.0.0.1');
-  }, []);
+  // Only allow same-app relative redirects — an absolute or protocol-relative
+  // callbackUrl would send users to an attacker-controlled site post-login.
+  const safeCallbackUrl =
+    callbackUrl && callbackUrl.startsWith('/') && !callbackUrl.startsWith('//')
+      ? callbackUrl
+      : null;
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -32,9 +32,9 @@ function LoginForm() {
     try {
       await login(email, password);
       const savedUser = JSON.parse(localStorage.getItem('auth_user') || '{}');
-      
-      if (callbackUrl) {
-        router.push(callbackUrl);
+
+      if (safeCallbackUrl) {
+        router.push(safeCallbackUrl);
       } else if (savedUser.role === 'super_admin' || savedUser.role === 'admin') {
         router.push('/admin');
       } else {
@@ -45,16 +45,6 @@ function LoginForm() {
     } finally {
       setLoading(false);
     }
-  };
-
-  const fillAdmin = () => {
-    setEmail('admin@example.com');
-    setPassword('Admin123456!');
-  };
-
-  const fillCustomer = () => {
-    setEmail('customer@example.com');
-    setPassword('Customer123456!');
   };
 
   return (
@@ -115,33 +105,6 @@ function LoginForm() {
               {loading ? 'Authenticating...' : 'Sign In'}
             </Button>
           </form>
-
-          {/* Quick Demo Accounts — local development only */}
-          {isLocalDev && (
-          <div className="pt-4 border-t border-border/60 space-y-2">
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground text-center">
-              Quick 1-Click Demo Login
-            </p>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={fillAdmin}
-                className="p-2.5 rounded-xl border border-dashed border-indigo-500/40 bg-indigo-500/5 hover:bg-indigo-500/10 text-xs font-semibold text-indigo-500 flex items-center justify-center gap-1.5 transition-colors"
-              >
-                <ShieldCheck className="h-3.5 w-3.5" />
-                <span>Super Admin</span>
-              </button>
-              <button
-                type="button"
-                onClick={fillCustomer}
-                className="p-2.5 rounded-xl border border-dashed border-emerald-500/40 bg-emerald-500/5 hover:bg-emerald-500/10 text-xs font-semibold text-emerald-500 flex items-center justify-center gap-1.5 transition-colors"
-              >
-                <User className="h-3.5 w-3.5" />
-                <span>Customer</span>
-              </button>
-            </div>
-          </div>
-          )}
 
           <div className="text-center text-xs text-muted-foreground pt-2">
             Don&apos;t have an account?{' '}

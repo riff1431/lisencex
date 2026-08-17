@@ -28,6 +28,7 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { UserRole } from '../../common/enums/app.enums';
+import { SkipTransform } from '../../common/decorators/skip-transform.decorator';
 
 // Multer config: store to OS temp dir, 200 MB limit, .zip only
 const multerConfig = {
@@ -165,6 +166,7 @@ export class PackagesController {
   // ── Public: Download file via signed token (streams the file) ─────────
 
   @Get('packages/download/:token')
+  @SkipTransform()
   async downloadFile(
     @Param('token') token: string,
     @Req() req: any,

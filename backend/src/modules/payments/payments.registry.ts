@@ -43,10 +43,16 @@ export class PaymentGatewayRegistry {
 
   async getSupportedGatewaysAsync(): Promise<Array<{ name: string; label: string; isTestMode?: boolean; enabled?: boolean; description?: string }>> {
     const pipraConfig = await this.settingsService.getPipraPayConfig(true);
-    const list: Array<{ name: string; label: string; isTestMode?: boolean; enabled?: boolean; description?: string }> = [
-      { name: 'simulator', label: 'Instant Simulator (Test Cards)', isTestMode: true, enabled: true },
-      { name: 'manual', label: 'Bank Wire / Offline Transfer', enabled: true },
-    ];
+    const list: Array<{ name: string; label: string; isTestMode?: boolean; enabled?: boolean; description?: string }> = [];
+
+    // The simulator marks orders PAID with no money moving. It is dev/test
+    // only — advertising it in production invites free "purchases" even when
+    // its webhook path is locked down, because the customer completion flow
+    // never goes through the webhook.
+    if (!isProduction()) {
+      list.push({ name: 'simulator', label: 'Instant Simulator (Test Cards)', isTestMode: true, enabled: true });
+    }
+    list.push({ name: 'manual', label: 'Bank Wire / Offline Transfer', enabled: true });
 
     // Outside production the mock credentials are usable for local testing.
     // In production only advertise gateways that are actually configured.
@@ -68,15 +74,5 @@ export class PaymentGatewayRegistry {
     }
 
     return list;
-  }
-
-  getSupportedGateways(): Array<{ name: string; label: string; isTestMode?: boolean; enabled?: boolean }> {
-    return [
-      { name: 'simulator', label: 'Instant Simulator (Test Cards)', isTestMode: true, enabled: true },
-      { name: 'stripe', label: 'Credit / Debit Card (Stripe)', enabled: true },
-      { name: 'paypal', label: 'PayPal', enabled: true },
-      { name: 'manual', label: 'Bank Wire / Offline Transfer', enabled: true },
-      { name: 'piprapay', label: 'PipraPay (Cards & Mobile Wallets)', isTestMode: true, enabled: true },
-    ];
   }
 }

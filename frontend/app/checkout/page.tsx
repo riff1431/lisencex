@@ -33,7 +33,9 @@ export default function CheckoutPage() {
   const { user } = useAuth();
   const { items, cartTotal, clearCart } = useCart();
 
-  const [paymentMethod, setPaymentMethod] = useState<'simulator' | 'stripe' | 'paypal' | 'manual' | 'piprapay'>('simulator');
+  // Default to the always-available manual gateway — the simulator is
+  // rejected by the backend in production, so it must not be preselected.
+  const [paymentMethod, setPaymentMethod] = useState<'simulator' | 'stripe' | 'paypal' | 'manual' | 'piprapay'>('manual');
   const [processing, setProcessing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [completedOrder, setCompletedOrder] = useState<any>(null);

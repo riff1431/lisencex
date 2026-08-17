@@ -27,20 +27,42 @@ export class SeederService implements OnApplicationBootstrap {
   ) {}
 
   async onApplicationBootstrap() {
+    const isProd = process.env.NODE_ENV === 'production';
+
     await this.seedSuperAdmin();
+
+    // Demo data and known passwords must never exist in a production DB —
+    // the credentials are public knowledge (they ship in the frontend bundle
+    // and the README), so anyone could log in as the demo customer.
+    if (isProd) {
+      this.logger.log('Production environment — skipping demo customer and sample product seeding');
+      await this.seedDefaultLicensePlans();
+      return;
+    }
+
     await this.seedDemoCustomer();
     await this.seedDefaultLicensePlans();
     await this.seedSampleProduct();
   }
 
   private async seedSuperAdmin() {
+    const isProd = process.env.NODE_ENV === 'production';
     const adminEmail = process.env.ADMIN_EMAIL || 'admin@example.com';
-    const adminPassword = process.env.ADMIN_PASSWORD || 'Admin123456!';
+    const adminPassword = process.env.ADMIN_PASSWORD;
+
+    if (isProd && !adminPassword) {
+      this.logger.error(
+        'ADMIN_PASSWORD is not set — skipping Super Admin seeding. ' +
+          'Set ADMIN_EMAIL/ADMIN_PASSWORD environment variables to create the initial admin.',
+      );
+      return;
+    }
+    const effectivePassword = adminPassword || 'Admin123456!';
 
     const existing = await this.userModel.findOne({ email: adminEmail.toLowerCase() });
     if (!existing) {
       const salt = await bcrypt.genSalt(10);
-      const passwordHash = await bcrypt.hash(adminPassword, salt);
+      const passwordHash = await bcrypt.hash(effectivePassword, salt);
 
       await this.userModel.create({
         email: adminEmail.toLowerCase(),

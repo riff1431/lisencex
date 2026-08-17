@@ -58,6 +58,7 @@ import {
   NotificationType,
   NotificationSeverity,
 } from '../../common/enums/app.enums';
+import { isProduction } from '../../common/utils/security.util';
 
 @Injectable()
 export class PaymentsService {
@@ -175,6 +176,14 @@ export class PaymentsService {
     ip?: string,
     userAgent?: string,
   ) {
+    // Defense in depth: the provider also refuses to start simulator
+    // sessions in production, so no valid simulated token can exist there.
+    if (isProduction()) {
+      throw new BadRequestException(
+        'Simulator payment gateway is disabled in production',
+      );
+    }
+
     const tokenResult = this.simulatorProvider.verifySimulatedToken(dto.simulatedToken);
     if (!tokenResult.valid || tokenResult.transactionId !== dto.transactionId) {
       throw new BadRequestException('Invalid or forged simulator payment token');

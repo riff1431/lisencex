@@ -34,21 +34,10 @@ export class OrdersController {
     });
   }
 
-  @UseGuards(JwtAuthGuard)
-  @Post('customer/orders/:id/confirm-payment')
-  async confirmPayment(
-    @CurrentUser('id') userId: string,
-    @CurrentUser('email') userEmail: string,
-    @Param('id') orderId: string,
-    @Body() body: { paymentReference?: string; paymentMethod?: string },
-  ) {
-    // Verify the order belongs to this user
-    const order = await this.ordersService.findById(orderId);
-    if (order.userId.toString() !== userId) {
-      throw new Error('Order does not belong to this user');
-    }
-    return this.ordersService.confirmPayment(orderId, body as any, userEmail);
-  }
+  // NOTE: customer-side confirm-payment was removed — it let any order owner
+  // mark their own order PAID and receive licenses without any payment proof.
+  // Orders are now only confirmed by gateway webhooks (signature-verified) or
+  // by the admin route below (manual/bank-transfer review).
 
   @UseGuards(JwtAuthGuard)
   @Get('customer/orders')
@@ -115,10 +104,10 @@ export class OrdersController {
 
   // ─── PUBLIC STORE ROUTES ─────────────────────────────────────────
 
-  @Get('public/store/products')
-  async getPublicProducts(@Query() query: any) {
-    return this.ordersService.findAll(query);
-  }
+  // NOTE: GET public/store/products was removed — it was a copy-paste bug
+  // that returned ALL ORDERS (customer emails, names, IPs, totals) to
+  // unauthenticated callers. The storefront uses /public/store/catalog from
+  // the products module instead.
 
   // Order status + license keys are owner-scoped: order numbers are
   // semi-guessable, so this moved behind auth with an ownership check

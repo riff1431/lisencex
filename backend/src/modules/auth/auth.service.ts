@@ -4,6 +4,7 @@ import {
   ConflictException,
   NotFoundException,
   BadRequestException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
@@ -254,11 +255,32 @@ export class AuthService {
   async updateUserRoleOrStatus(
     userId: string,
     dto: { role?: UserRole; isActive?: boolean },
+    actor?: { actorId: string; actorRole: UserRole },
   ) {
     const user = await this.userModel.findById(new Types.ObjectId(userId));
     if (!user) {
       throw new NotFoundException('User not found');
     }
+
+    // Privilege rules: only a SUPER_ADMIN may change roles or touch another
+    // SUPER_ADMIN account — otherwise an ADMIN could promote itself and
+    // collapse the role model.
+    const actorIsSuperAdmin = actor?.actorRole === UserRole.SUPER_ADMIN;
+    const targetIsSuperAdmin = user.role === UserRole.SUPER_ADMIN;
+    if (dto.role !== undefined && !actorIsSuperAdmin) {
+      throw new ForbiddenException('Only a super admin can change user roles');
+    }
+    if (targetIsSuperAdmin && !actorIsSuperAdmin) {
+      throw new ForbiddenException('Only a super admin can modify a super admin account');
+    }
+    if (
+      actor &&
+      actor.actorId === user._id.toString() &&
+      (dto.role !== undefined || dto.isActive === false)
+    ) {
+      throw new BadRequestException('Admins cannot change their own role or deactivate themselves');
+    }
+
     if (dto.role) user.role = dto.role;
     if (dto.isActive !== undefined) user.isActive = dto.isActive;
     await user.save();
