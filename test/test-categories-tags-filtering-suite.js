@@ -14,7 +14,7 @@
  * 10. Product Count Sync & Audit Trail: Recalculates live counts and logs CATEGORY_CREATED and TAG_CREATED
  */
 
-const BASE_URL = process.env.API_URL || 'http://localhost:5001/api/v1';
+const BASE_URL = process.env.API_URL || 'http://localhost:5000/api/v1';
 
 const colors = {
   reset: '\x1b[0m',

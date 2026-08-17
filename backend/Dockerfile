@@ -17,7 +17,7 @@ FROM node:20-alpine AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
-ENV PORT=5001
+ENV PORT=5000
 
 RUN corepack enable && corepack prepare pnpm@latest --activate
 
@@ -27,6 +27,6 @@ RUN pnpm install --prod --frozen-lockfile
 
 COPY --from=builder /app/dist ./dist
 
-EXPOSE 5001
+EXPOSE 5000
 
 CMD ["node", "dist/main.js"]

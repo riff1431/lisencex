@@ -103,7 +103,7 @@ function crc32(buf) {
   return ~crc >>> 0;
 }
 
-const BASE_URL = 'http://localhost:5001/api/v1';
+const BASE_URL = 'http://localhost:5000/api/v1';
 
 async function request(url, options = {}) {
   const res = await fetch(url, options);
@@ -323,7 +323,7 @@ async function runTests() {
   console.log(`   ✔ Generated signed download token: ${tokenData.token?.slice(0, 30)}...`);
   console.log(`   ✔ Download URL: ${tokenData.downloadUrl} (Expires in ${tokenData.expiresInSeconds}s)`);
 
-  const downloadRes = await fetch(`http://localhost:5001${tokenData.downloadUrl}`);
+  const downloadRes = await fetch(`http://localhost:5000${tokenData.downloadUrl}`);
   if (downloadRes.status === 200) {
     const contentType = downloadRes.headers.get('content-type');
     const contentDisp = downloadRes.headers.get('content-disposition');

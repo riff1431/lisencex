@@ -115,7 +115,7 @@ export function MediaPicker({
       }
       if (folderFilter) formData.append('folder', folderFilter);
 
-      const res = await fetch('http://localhost:5001/api/v1/admin/media/batch-upload', {
+      const res = await fetch('http://localhost:5000/api/v1/admin/media/batch-upload', {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${localStorage.getItem('auth_token') || ''}`,
@@ -323,14 +323,14 @@ export function MediaPicker({
                         >
                           {isImage ? (
                             <img
-                              src={item.publicUrl || `http://localhost:5001/api/v1/public/storage/serve/${item.mediaId}`}
+                              src={item.publicUrl || `http://localhost:5000/api/v1/public/storage/serve/${item.mediaId}`}
                               alt={item.title || item.originalName}
                               className="w-full h-full object-cover group-hover:scale-105 transition-transform"
                               onError={(e) => {
                                 const target = e.currentTarget;
                                 if (!target.dataset.triedFallback) {
                                   target.dataset.triedFallback = '1';
-                                  target.src = `http://localhost:5001/api/v1/public/media/${encodeURIComponent(item.fileName || item.mediaId)}`;
+                                  target.src = `http://localhost:5000/api/v1/public/media/${encodeURIComponent(item.fileName || item.mediaId)}`;
                                 }
                               }}
                             />
@@ -384,12 +384,12 @@ export function MediaPicker({
                   <div className="aspect-video w-full rounded-xl bg-secondary/50 border border-border overflow-hidden flex items-center justify-center">
                     {selectedItem.mimeType?.startsWith('image/') ? (
                       <img
-                        src={selectedItem.publicUrl || `http://localhost:5001/api/v1/public/storage/serve/${selectedItem.mediaId}`}
+                        src={selectedItem.publicUrl || `http://localhost:5000/api/v1/public/storage/serve/${selectedItem.mediaId}`}
                         onError={(e) => {
                           const target = e.currentTarget;
                           if (!target.dataset.triedFallback) {
                             target.dataset.triedFallback = '1';
-                            target.src = `http://localhost:5001/api/v1/public/media/${encodeURIComponent(selectedItem.fileName || selectedItem.mediaId)}`;
+                            target.src = `http://localhost:5000/api/v1/public/media/${encodeURIComponent(selectedItem.fileName || selectedItem.mediaId)}`;
                           }
                         }}
                         alt={selectedItem.title}

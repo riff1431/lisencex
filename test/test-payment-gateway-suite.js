@@ -17,7 +17,7 @@
 
 const crypto = require('crypto');
 
-const BASE_URL = process.env.API_URL || 'http://localhost:5001/api/v1';
+const BASE_URL = process.env.API_URL || 'http://localhost:5000/api/v1';
 
 const colors = {
   reset: '\x1b[0m',

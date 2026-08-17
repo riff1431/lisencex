@@ -2,7 +2,7 @@
  * LicenseNest - WordPress-Style Media Library System Test Suite
  */
 
-const BASE_URL = 'http://localhost:5001/api/v1';
+const BASE_URL = 'http://localhost:5000/api/v1';
 
 async function request(path, options = {}) {
   const url = `${BASE_URL}${path}`;

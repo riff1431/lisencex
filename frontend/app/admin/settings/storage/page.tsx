@@ -706,7 +706,7 @@ export default function AdminStorageSettingsPage() {
                     <td className="p-3.5 text-right">
                       <div className="flex items-center justify-end gap-1.5">
                         <a
-                          href={`http://localhost:5001/api/v1/public/storage/serve/${file.fileId}`}
+                          href={`http://localhost:5000/api/v1/public/storage/serve/${file.fileId}`}
                           target="_blank"
                           rel="noreferrer"
                           className="p-1.5 rounded-lg border border-border bg-secondary/50 hover:bg-secondary text-foreground"

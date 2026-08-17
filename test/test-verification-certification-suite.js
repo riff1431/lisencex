@@ -29,7 +29,7 @@
  * 10. Diagnostics integrity: Request/response payloads & suggested fixes included
  */
 
-const API_BASE = process.env.API_BASE || 'http://localhost:5001/api/v1';
+const API_BASE = process.env.API_BASE || 'http://localhost:5000/api/v1';
 
 let adminToken = '';
 

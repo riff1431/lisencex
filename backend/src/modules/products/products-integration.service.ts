@@ -28,7 +28,7 @@ export class ProductsIntegrationService {
   private getApiBaseUrl(): string {
     return (
       this.configService.get<string>('API_BASE_URL') ||
-      'http://localhost:5001/api/v1'
+      'http://localhost:5000/api/v1'
     );
   }
 

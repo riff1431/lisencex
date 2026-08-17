@@ -31,7 +31,7 @@ async function bootstrap() {
   app.useGlobalInterceptors(new TransformInterceptor());
   app.useGlobalFilters(new AllExceptionsFilter());
 
-  const port = process.env.PORT || 5001;
+  const port = process.env.PORT || 5000;
   await app.listen(port);
   logger.log(`🚀 License Key Management API Server is running on: http://localhost:${port}/api/v1`);
 }

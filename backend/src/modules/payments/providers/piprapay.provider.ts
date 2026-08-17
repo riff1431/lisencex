@@ -63,7 +63,7 @@ export class PipraPayGatewayProvider implements IPaymentGateway {
     const orderCurrency = (order.currency || 'USD').toUpperCase();
     const returnUrl = options?.successUrl || `${process.env.FRONTEND_URL || 'http://localhost:3000'}/checkout/success`;
     const cancelUrl = options?.cancelUrl || `${process.env.FRONTEND_URL || 'http://localhost:3000'}/checkout`;
-    const webhookUrl = `${process.env.BACKEND_URL || 'http://localhost:5001'}/api/v1/public/payments/webhook/piprapay`;
+    const webhookUrl = `${process.env.BACKEND_URL || 'http://localhost:5000'}/api/v1/public/payments/webhook/piprapay`;
 
     // Candidate checkout endpoints to try based on merchant settings and documentation
     const cleanBase = (config.apiUrl || 'https://pay.huipper.com/api').trim().replace(/\/+$/, '');

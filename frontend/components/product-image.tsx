@@ -29,7 +29,7 @@ export function ProductImage({
       return src;
     }
     if (src.startsWith('/api/v1/')) {
-      const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api/v1';
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api/v1';
       return `${baseUrl.replace(/\/api\/v1$/, '')}${src}`;
     }
     return src;

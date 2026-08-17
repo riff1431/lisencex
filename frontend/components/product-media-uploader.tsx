@@ -76,7 +76,7 @@ export function ProductMediaUploader({
 
       // Upload to API
       const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') || localStorage.getItem('token') : null;
-      const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api/v1';
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api/v1';
 
       const res = await fetch(`${baseUrl}/admin/media/upload`, {
         method: 'POST',
