@@ -7,6 +7,7 @@ import { ManualGatewayProvider } from './providers/manual.provider';
 import { PipraPayGatewayProvider } from './providers/piprapay.provider';
 import { PaymentGatewayType } from '../../database/schemas/payment-transaction.schema';
 import { SettingsService } from '../settings/settings.service';
+import { isProduction } from '../../common/utils/security.util';
 
 @Injectable()
 export class PaymentGatewayRegistry {
@@ -44,10 +45,17 @@ export class PaymentGatewayRegistry {
     const pipraConfig = await this.settingsService.getPipraPayConfig(true);
     const list: Array<{ name: string; label: string; isTestMode?: boolean; enabled?: boolean; description?: string }> = [
       { name: 'simulator', label: 'Instant Simulator (Test Cards)', isTestMode: true, enabled: true },
-      { name: 'stripe', label: 'Credit / Debit Card (Stripe)', enabled: true },
-      { name: 'paypal', label: 'PayPal', enabled: true },
       { name: 'manual', label: 'Bank Wire / Offline Transfer', enabled: true },
     ];
+
+    // Outside production the mock credentials are usable for local testing.
+    // In production only advertise gateways that are actually configured.
+    if (!isProduction() || this.stripeProvider.isConfigured()) {
+      list.push({ name: 'stripe', label: 'Credit / Debit Card (Stripe)', enabled: true });
+    }
+    if (!isProduction() || this.paypalProvider.isConfigured()) {
+      list.push({ name: 'paypal', label: 'PayPal', enabled: true });
+    }
 
     if (pipraConfig.enabled) {
       list.push({

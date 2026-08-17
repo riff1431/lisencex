@@ -2,6 +2,7 @@ import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as jwt from 'jsonwebtoken';
 import * as crypto from 'crypto';
+import { resolveActivationSecret } from '../../common/utils/security.util';
 
 export interface ActivationTokenPayload {
   tokenId: string;
@@ -21,9 +22,9 @@ export class TokenService {
   private secret: string;
 
   constructor(private configService: ConfigService) {
-    this.secret =
-      this.configService.get<string>('ACTIVATION_SECRET') ||
-      'activation_signing_secret_hmac_2026_license_hub_token_sign';
+    this.secret = resolveActivationSecret(
+      this.configService.get<string>('ACTIVATION_SECRET'),
+    );
   }
 
   /**

@@ -9,6 +9,7 @@ import {
 import { Order } from '../../../database/schemas/order.schema';
 import { PaymentTransaction } from '../../../database/schemas/payment-transaction.schema';
 import { SettingsService, PipraPayConfig } from '../../settings/settings.service';
+import { isProduction, safeEqual } from '../../../common/utils/security.util';
 
 @Injectable()
 export class PipraPayGatewayProvider implements IPaymentGateway {
@@ -279,23 +280,26 @@ export class PipraPayGatewayProvider implements IPaymentGateway {
       '';
 
     let isValid = false;
+    const isProd = isProduction();
 
-    // 1. Check bypass or test signatures
+    // 1. Dev-only bypass/test signatures for the bundled test suite — never in production.
     if (
-      headerSig === 'piprapay_bypass_signature' ||
-      headerSig === 'pipra_test_signature' ||
-      (config.sandboxMode && headerSig.startsWith('test_sig_'))
+      !isProd &&
+      (headerSig === 'piprapay_bypass_signature' ||
+        headerSig === 'pipra_test_signature' ||
+        (config.sandboxMode && headerSig.startsWith('test_sig_')))
     ) {
       isValid = true;
-    } else if (headerSig && secretKey) {
+    } else if (headerSig && secretKey && secretKey !== 'piprapay_secret_fallback') {
       // 2. Cryptographic HMAC validation
       const computedHex = crypto.createHmac('sha256', secretKey).update(rawPayload).digest('hex');
       const computedBase64 = crypto.createHmac('sha256', secretKey).update(rawPayload).digest('base64');
-      isValid = headerSig === computedHex || headerSig === computedBase64;
-    } else if (headerApiKey && headerApiKey === config.apiKey) {
+      isValid = safeEqual(headerSig, computedHex) || safeEqual(headerSig, computedBase64);
+    } else if (headerApiKey && config.apiKey && safeEqual(headerApiKey, config.apiKey)) {
       // 3. API key validation
       isValid = true;
-    } else if (config.sandboxMode) {
+    } else if (!isProd && config.sandboxMode) {
+      // Sandbox auto-accept only outside production.
       isValid = true;
     }
 

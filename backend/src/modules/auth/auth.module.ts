@@ -6,6 +6,7 @@ import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { UsersController } from './users.controller';
 import { JwtStrategy } from './jwt.strategy';
+import { resolveJwtSecret } from '../../common/utils/security.util';
 
 @Module({
   imports: [
@@ -13,9 +14,7 @@ import { JwtStrategy } from './jwt.strategy';
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: async (configService: ConfigService) => ({
-        secret:
-          configService.get<string>('JWT_SECRET') ||
-          'super_secret_jwt_license_key_2026_secure_auth',
+        secret: resolveJwtSecret(configService.get<string>('JWT_SECRET')),
         signOptions: {
           expiresIn: (configService.get<string>('JWT_EXPIRES_IN') ||
             '7d') as any,

@@ -9,17 +9,19 @@ import {
 } from '../interfaces/payment-gateway.interface';
 import { Order } from '../../../database/schemas/order.schema';
 import { PaymentTransaction } from '../../../database/schemas/payment-transaction.schema';
+import { isProduction, safeEqual } from '../../../common/utils/security.util';
 
 @Injectable()
 export class SimulatorGatewayProvider implements IPaymentGateway {
   readonly gatewayName = 'simulator';
   private readonly logger = new Logger(SimulatorGatewayProvider.name);
   private readonly secret: string;
+  private readonly secretConfigured: boolean;
 
   constructor(private configService: ConfigService) {
-    this.secret =
-      this.configService.get<string>('PAYMENT_SIMULATOR_SECRET') ||
-      'licensenest_sim_secret_9a8b7c6d5e4f3a2b1c';
+    const secret = this.configService.get<string>('PAYMENT_SIMULATOR_SECRET');
+    this.secretConfigured = !!secret;
+    this.secret = secret || 'licensenest_sim_secret_9a8b7c6d5e4f3a2b1c';
   }
 
   generateSimulatedToken(transactionId: string, orderNumber: string, amount: number): string {
@@ -86,6 +88,19 @@ export class SimulatorGatewayProvider implements IPaymentGateway {
     signature: string,
     headers?: Record<string, string>,
   ): Promise<WebhookVerificationResult> {
+    const isProd = isProduction();
+
+    // In production the default (repo-committed) secret is public knowledge —
+    // refuse webhooks until a real PAYMENT_SIMULATOR_SECRET is configured.
+    if (isProd && !this.secretConfigured) {
+      return {
+        isValid: false,
+        eventType: 'unknown',
+        failureReason:
+          'Simulator webhook rejected in production: PAYMENT_SIMULATOR_SECRET is not configured',
+      };
+    }
+
     // Simulator webhook verification: requires HMAC-SHA256 signature
     const eventString = typeof payload === 'string' ? payload : JSON.stringify(payload);
     const expectedSignature = crypto
@@ -93,7 +108,13 @@ export class SimulatorGatewayProvider implements IPaymentGateway {
       .update(eventString)
       .digest('hex');
 
-    if (signature !== expectedSignature && signature !== 'simulator_bypass_signature') {
+    let isValid = safeEqual(signature, expectedSignature);
+    // Dev-only convenience signature for the bundled test suite.
+    if (!isProd && signature === 'simulator_bypass_signature') {
+      isValid = true;
+    }
+
+    if (!isValid) {
       return {
         isValid: false,
         eventType: 'unknown',

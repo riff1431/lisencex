@@ -51,8 +51,25 @@ export class StorageService implements OnModuleInit {
     @InjectModel(Media.name)
     private readonly mediaModel: Model<MediaDocument>,
   ) {
-    const rawSecret = process.env.ACTIVATION_SECRET || process.env.JWT_SECRET || 'licensenest_storage_encryption_secret_32b';
-    this.encryptionKey = crypto.createHash('sha256').update(rawSecret).digest();
+    const dedicatedSecret = process.env.STORAGE_ENCRYPTION_SECRET;
+    if (dedicatedSecret) {
+      this.encryptionKey = crypto.createHash('sha256').update(dedicatedSecret).digest();
+    } else {
+      // Legacy derivation — must stay byte-compatible so credentials already
+      // encrypted in the database remain decryptable.
+      const rawSecret =
+        process.env.ACTIVATION_SECRET || process.env.JWT_SECRET ||
+        'licensenest_storage_encryption_secret_32b';
+      this.encryptionKey = crypto.createHash('sha256').update(rawSecret).digest();
+
+      if (process.env.NODE_ENV === 'production') {
+        this.logger.warn(
+          'STORAGE_ENCRYPTION_SECRET is not set — storage credentials are keyed from ' +
+            'ACTIVATION_SECRET/JWT_SECRET. Set STORAGE_ENCRYPTION_SECRET and re-save provider ' +
+            'credentials in the admin UI to decouple storage encryption from auth secrets.',
+        );
+      }
+    }
   }
 
   async onModuleInit() {

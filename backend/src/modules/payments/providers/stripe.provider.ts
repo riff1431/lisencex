@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as crypto from 'crypto';
 import {
@@ -9,6 +9,7 @@ import {
 } from '../interfaces/payment-gateway.interface';
 import { Order } from '../../../database/schemas/order.schema';
 import { PaymentTransaction } from '../../../database/schemas/payment-transaction.schema';
+import { isProduction, safeEqual } from '../../../common/utils/security.util';
 
 @Injectable()
 export class StripeGatewayProvider implements IPaymentGateway {
@@ -16,12 +17,21 @@ export class StripeGatewayProvider implements IPaymentGateway {
   private readonly logger = new Logger(StripeGatewayProvider.name);
   private readonly secretKey: string;
   private readonly webhookSecret: string;
+  private readonly secretKeyConfigured: boolean;
+  private readonly webhookSecretConfigured: boolean;
 
   constructor(private configService: ConfigService) {
-    this.secretKey =
-      this.configService.get<string>('STRIPE_SECRET_KEY') || 'sk_test_mock_stripe_key_123';
-    this.webhookSecret =
-      this.configService.get<string>('STRIPE_WEBHOOK_SECRET') || 'whsec_mock_stripe_secret_123';
+    const secretKey = this.configService.get<string>('STRIPE_SECRET_KEY');
+    const webhookSecret = this.configService.get<string>('STRIPE_WEBHOOK_SECRET');
+    this.secretKeyConfigured = !!secretKey;
+    this.webhookSecretConfigured = !!webhookSecret;
+    // Mock defaults are only usable outside production (see isConfigured).
+    this.secretKey = secretKey || 'sk_test_mock_stripe_key_123';
+    this.webhookSecret = webhookSecret || 'whsec_mock_stripe_secret_123';
+  }
+
+  isConfigured(): boolean {
+    return this.secretKeyConfigured && this.webhookSecretConfigured;
   }
 
   async initiatePaymentSession(
@@ -29,6 +39,12 @@ export class StripeGatewayProvider implements IPaymentGateway {
     transaction: PaymentTransaction,
     options?: Record<string, any>,
   ): Promise<PaymentSessionResult> {
+    if (isProduction() && !this.isConfigured()) {
+      throw new BadRequestException(
+        'Stripe is not configured on this server (STRIPE_SECRET_KEY / STRIPE_WEBHOOK_SECRET)',
+      );
+    }
+
     const sessionId = `cs_test_${crypto.randomBytes(16).toString('hex')}`;
     const clientSecret = `pi_test_${crypto.randomBytes(16).toString('hex')}_secret_${crypto.randomBytes(12).toString('hex')}`;
 
@@ -55,23 +71,49 @@ export class StripeGatewayProvider implements IPaymentGateway {
     headers?: Record<string, string>,
   ): Promise<WebhookVerificationResult> {
     const rawPayload = typeof payload === 'string' ? payload : JSON.stringify(payload);
+    const isProd = isProduction();
 
-    // Stripe signature verification logic (t=timestamp,v1=signature)
+    // Production is fail-closed: no configured webhook secret -> reject everything.
+    if (isProd && !this.webhookSecretConfigured) {
+      return {
+        isValid: false,
+        eventType: 'unknown',
+        failureReason:
+          'Stripe webhook rejected: STRIPE_WEBHOOK_SECRET is not configured on this server',
+      };
+    }
+
+    // Stripe signature scheme: t=<timestamp>,v1=<hex hmac of "<t>.<payload>"
     let isValid = false;
     if (signature && signature.includes('v1=')) {
-      const parts = signature.split(',');
+      const parts = signature.split(',').map((p) => p.trim());
       const timestamp = parts.find((p) => p.startsWith('t='))?.split('=')[1];
       const sig = parts.find((p) => p.startsWith('v1='))?.split('=')[1];
 
       if (timestamp && sig) {
+        if (isProd) {
+          // Replay protection: reject events older/newer than 5 minutes.
+          const age = Math.abs(Math.floor(Date.now() / 1000) - parseInt(timestamp, 10));
+          if (Number.isNaN(age) || age > 300) {
+            return {
+              isValid: false,
+              eventType: 'unknown',
+              failureReason: 'Stripe webhook timestamp outside the 5-minute tolerance window',
+            };
+          }
+        }
+
         const signedPayload = `${timestamp}.${rawPayload}`;
         const expectedSig = crypto
           .createHmac('sha256', this.webhookSecret)
           .update(signedPayload)
           .digest('hex');
-        isValid = sig === expectedSig;
+        isValid = safeEqual(sig, expectedSig);
       }
-    } else if (signature === 'stripe_bypass_signature') {
+    }
+
+    // Dev-only convenience signature for the bundled test suite — never valid in production.
+    if (!isProd && signature === 'stripe_bypass_signature') {
       isValid = true;
     }
 

@@ -6,6 +6,7 @@ import {
   PurchaseVerificationResult,
 } from '../interfaces/marketplace-provider.interface';
 import { MarketplaceProviderType } from '../../../common/enums/app.enums';
+import { isProduction } from '../../../common/utils/security.util';
 
 @Injectable()
 export class EnvatoMarketplaceProvider implements IMarketplaceProvider {
@@ -22,6 +23,20 @@ export class EnvatoMarketplaceProvider implements IMarketplaceProvider {
 
     // If Envato API token is not yet configured, provide clear actionable feedback
     if (!token) {
+      if (isProduction()) {
+        // Fail-closed: without the API token any UUID would otherwise be
+        // accepted as a valid purchase (free license claiming).
+        this.logger.error(
+          'ENVATO_API_TOKEN is not configured — Envato purchase verification is rejected in production instead of accepting unverified codes.',
+        );
+        return {
+          valid: false,
+          provider: this.providerType,
+          errorMessage:
+            'Envato purchase verification is temporarily unavailable. Please contact support.',
+        };
+      }
+
       this.logger.warn(
         'ENVATO_API_TOKEN is not configured in environment. Checking format.',
       );

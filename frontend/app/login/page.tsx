@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, Suspense } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
@@ -12,10 +12,17 @@ function LoginForm() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  // Demo quick-fill exposes real seeded credentials — local development only.
+  const [isLocalDev, setIsLocalDev] = useState(false);
   const { login } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
   const callbackUrl = searchParams.get('callbackUrl');
+
+  useEffect(() => {
+    const host = window.location.hostname;
+    setIsLocalDev(host === 'localhost' || host === '127.0.0.1');
+  }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -109,7 +116,8 @@ function LoginForm() {
             </Button>
           </form>
 
-          {/* Quick Demo Accounts */}
+          {/* Quick Demo Accounts — local development only */}
+          {isLocalDev && (
           <div className="pt-4 border-t border-border/60 space-y-2">
             <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground text-center">
               Quick 1-Click Demo Login
@@ -133,6 +141,7 @@ function LoginForm() {
               </button>
             </div>
           </div>
+          )}
 
           <div className="text-center text-xs text-muted-foreground pt-2">
             Don&apos;t have an account?{' '}

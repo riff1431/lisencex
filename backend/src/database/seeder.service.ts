@@ -51,7 +51,7 @@ export class SeederService implements OnApplicationBootstrap {
       });
 
       this.logger.log(
-        `✅ Initial Super Admin seeded: ${adminEmail} / ${adminPassword}`,
+        `✅ Initial Super Admin seeded: ${adminEmail} (password from ADMIN_PASSWORD env — not logged)`,
       );
     }
   }
@@ -74,7 +74,7 @@ export class SeederService implements OnApplicationBootstrap {
       });
 
       this.logger.log(
-        `✅ Initial Demo Customer seeded: ${customerEmail} / ${customerPassword}`,
+        `✅ Initial Demo Customer seeded: ${customerEmail} (demo password — not logged)`,
       );
     }
   }
