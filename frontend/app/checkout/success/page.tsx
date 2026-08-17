@@ -53,7 +53,7 @@ function CheckoutSuccessContent() {
     const fetchOrderStatus = async () => {
       try {
         setLoading(true);
-        const res = await apiRequest(`/public/orders/status/${encodeURIComponent(orderNumber)}`);
+        const res = await apiRequest(`/customer/orders/status/${encodeURIComponent(orderNumber)}`);
         const data = res.data || res;
         if (data?.order) {
           setOrderData(data.order);

@@ -8,7 +8,7 @@ import { apiRequest } from '@/lib/api';
 import {
   LayoutDashboard, Box, KeyRound, Sparkles, Download,
   Settings, ShieldCheck, LogOut, AlertTriangle, ExternalLink, Bell,
-  ShoppingBag, Tag, LifeBuoy, MessageSquare, Receipt,
+  ShoppingBag, Tag, LifeBuoy, MessageSquare,
 } from 'lucide-react';
 
 export function UserSidebar() {
@@ -83,11 +83,6 @@ export function UserSidebar() {
       href: '/dashboard/reviews',
       label: 'My Reviews',
       icon: MessageSquare,
-    },
-    {
-      href: '/dashboard/billing',
-      label: 'Billing & Invoices',
-      icon: Receipt,
     },
     {
       href: '/dashboard/notifications',

@@ -8,9 +8,25 @@ async function bootstrap() {
   const logger = new Logger('Bootstrap');
   const app = await NestFactory.create(AppModule);
 
-  // Enable CORS for Next.js frontend
+  // CORS: in production, restrict to CORS_ORIGINS (comma-separated) so only
+  // our own frontends can make credentialed cross-origin calls. Development
+  // stays permissive for local tooling.
+  const configuredOrigins = (process.env.CORS_ORIGINS || '')
+    .split(',')
+    .map((o) => o.trim())
+    .filter(Boolean);
+
+  let corsOrigin: any = true;
+  if (configuredOrigins.length > 0) {
+    corsOrigin = configuredOrigins;
+  } else if (process.env.NODE_ENV === 'production') {
+    logger.error(
+      'CORS_ORIGINS is not set — allowing ALL origins. Set CORS_ORIGINS=https://your-frontend-domain (comma-separate multiple domains).',
+    );
+  }
+
   app.enableCors({
-    origin: true,
+    origin: corsOrigin,
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
     credentials: true,
   });

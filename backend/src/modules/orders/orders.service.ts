@@ -3,6 +3,7 @@ import {
   NotFoundException,
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Inject,
   forwardRef,
   Logger,
@@ -441,10 +442,16 @@ export class OrdersService {
   /**
    * Public Order Status & License Details Query (for Post-Checkout Success Page)
    */
-  async getOrderStatusWithLicenses(orderNumber: string) {
+  async getOrderStatusWithLicenses(orderNumber: string, ownerUserId?: string) {
     const order = await this.orderModel.findOne({ orderNumber }).lean();
     if (!order) {
       throw new NotFoundException(`Order #${orderNumber} not found`);
+    }
+
+    // Ownership check: order numbers are semi-guessable and the response
+    // contains license keys, so the caller must own the order.
+    if (ownerUserId && String(order.userId) !== ownerUserId) {
+      throw new ForbiddenException('You do not have access to this order');
     }
 
     // Fetch associated licenses

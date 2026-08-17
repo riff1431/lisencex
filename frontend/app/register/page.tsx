@@ -23,7 +23,7 @@ export default function RegisterPage() {
 
     try {
       await register(fullName, email, password);
-      router.push('/customer');
+      router.push('/dashboard');
     } catch (err: any) {
       setError(err.message || 'Registration failed. Please try again.');
     } finally {

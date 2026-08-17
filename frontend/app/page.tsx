@@ -176,7 +176,7 @@ export default function HomePage() {
           <div className="flex items-center gap-6">
             <Link href="/playground" className="hover:text-foreground">Playground</Link>
             <Link href="/login" className="hover:text-foreground">Admin Portal</Link>
-            <Link href="/customer" className="hover:text-foreground">Customer Portal</Link>
+            <Link href="/dashboard" className="hover:text-foreground">Customer Portal</Link>
           </div>
         </div>
       </footer>

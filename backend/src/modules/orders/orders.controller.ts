@@ -120,8 +120,15 @@ export class OrdersController {
     return this.ordersService.findAll(query);
   }
 
-  @Get('public/orders/status/:orderNumber')
-  async getOrderStatus(@Param('orderNumber') orderNumber: string) {
-    return this.ordersService.getOrderStatusWithLicenses(orderNumber);
+  // Order status + license keys are owner-scoped: order numbers are
+  // semi-guessable, so this moved behind auth with an ownership check
+  // (previously GET public/orders/status/:orderNumber leaked license keys).
+  @UseGuards(JwtAuthGuard)
+  @Get('customer/orders/status/:orderNumber')
+  async getOrderStatus(
+    @CurrentUser('id') userId: string,
+    @Param('orderNumber') orderNumber: string,
+  ) {
+    return this.ordersService.getOrderStatusWithLicenses(orderNumber, userId);
   }
 }

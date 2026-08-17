@@ -18,7 +18,7 @@ export default function AdminLayout({
       if (!user) {
         router.push('/login');
       } else if (!isAdmin) {
-        router.push('/customer');
+        router.push('/dashboard');
       }
     }
   }, [user, isLoading, isAdmin, router]);
