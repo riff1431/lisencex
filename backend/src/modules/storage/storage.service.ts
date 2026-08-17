@@ -486,7 +486,13 @@ export class StorageService implements OnModuleInit {
   ): Promise<{ success: boolean; message: string; latencyMs: number; details?: any }> {
     let provider: StorageProvider;
 
-    if (customConfig) {
+    // The admin UI sends an empty body for the saved-config test — an empty
+    // object must not be treated as a custom config (it would instantiate an
+    // unconfigured provider). Fall back to the configured provider instance.
+    const hasCustomConfig =
+      !!customConfig && Object.keys(customConfig).length > 0;
+
+    if (hasCustomConfig) {
       switch (providerType) {
         case StorageProviderType.S3:
           provider = new S3StorageProvider({
