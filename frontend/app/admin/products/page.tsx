@@ -141,6 +141,30 @@ export default function AdminProductsPage() {
   const [formError, setFormError] = useState('');
   const [saving, setSaving] = useState(false);
 
+  // Distributable package (ZIP) uploaded directly from the create/edit modal.
+  // Submitted as a second phase after the product itself is saved.
+  const [productPackageFile, setProductPackageFile] = useState<File | null>(null);
+  const [productPackageVersion, setProductPackageVersion] = useState('');
+  const [productPackageNotes, setProductPackageNotes] = useState('');
+  const [productPackagePublish, setProductPackagePublish] = useState(true);
+  const [packageErrors, setPackageErrors] = useState<string[]>([]);
+  const [packageBanner, setPackageBanner] = useState('');
+  const [productSavedWhilePackageFailed, setProductSavedWhilePackageFailed] = useState(false);
+  const [savePhase, setSavePhase] = useState<'idle' | 'product' | 'package'>('idle');
+  const [zipDragOver, setZipDragOver] = useState(false);
+
+  const resetProductPackageState = (version = '') => {
+    setProductPackageFile(null);
+    setProductPackageVersion(version);
+    setProductPackageNotes('');
+    setProductPackagePublish(true);
+    setPackageErrors([]);
+    setPackageBanner('');
+    setProductSavedWhilePackageFailed(false);
+    setSavePhase('idle');
+    setZipDragOver(false);
+  };
+
   // Add Version / Package Upload Modal State
   const [showVersionModal, setShowVersionModal] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<any>(null);
@@ -157,6 +181,7 @@ export default function AdminProductsPage() {
   const [packageFile, setPackageFile] = useState<File | null>(null);
   const [publishingVersion, setPublishingVersion] = useState(false);
   const [versionModalError, setVersionModalError] = useState('');
+  const [versionModalDetails, setVersionModalDetails] = useState<string[]>([]);
   const [validationResult, setValidationResult] = useState<any | null>(null);
 
   // View Versions Drawer / Modal State
@@ -173,6 +198,7 @@ export default function AdminProductsPage() {
   const [replaceFile, setReplaceFile] = useState<File | null>(null);
   const [replacingFile, setReplacingFile] = useState(false);
   const [replaceError, setReplaceError] = useState('');
+  const [replaceDetails, setReplaceDetails] = useState<string[]>([]);
 
   // API Credentials Modal State
   const [showCredentialsModal, setShowCredentialsModal] = useState(false);
@@ -400,6 +426,7 @@ export default function AdminProductsPage() {
       minNodeVersion: '18.0.0',
     });
     setFormError('');
+    resetProductPackageState('1.0.0');
     setShowProductModal(true);
   };
 
@@ -473,12 +500,35 @@ export default function AdminProductsPage() {
       minNodeVersion: '18.0.0',
     });
     setFormError('');
+    resetProductPackageState('');
     setShowProductModal(true);
   };
 
   const handleSaveProduct = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError('');
+
+    // Client-side guards for the distributable package
+    if (productPackageFile) {
+      if (!productPackageFile.name.toLowerCase().endsWith('.zip')) {
+        setPackageErrors(['Only .zip files are accepted.']);
+        setPackageBanner('Please choose a valid ZIP archive.');
+        return;
+      }
+      if (productPackageFile.size > 200 * 1024 * 1024) {
+        setPackageErrors([`File is ${(productPackageFile.size / 1024 / 1024).toFixed(1)} MB — the limit is 200 MB.`]);
+        setPackageBanner('Package file is too large.');
+        return;
+      }
+      if (!productPackageVersion.trim()) {
+        setPackageErrors(['A version number is required when uploading a package ZIP.']);
+        setPackageBanner('Add a version number for the package.');
+        return;
+      }
+    }
+    setPackageErrors([]);
+    setPackageBanner('');
+    setProductSavedWhilePackageFailed(false);
     setSaving(true);
 
     try {
@@ -555,24 +605,70 @@ export default function AdminProductsPage() {
         envatoLicensePlanId: productForm.envatoLicensePlanId || null,
       };
 
-      if (editingProductId) {
-        await apiRequest(`/admin/products/${editingProductId}`, {
+      // Phase 1: save the product itself
+      setSavePhase('product');
+      let productId = editingProductId;
+      if (productId) {
+        await apiRequest(`/admin/products/${productId}`, {
           method: 'PATCH',
           body: JSON.stringify(payload),
         });
       } else {
-        await apiRequest('/admin/products', {
+        const res = await apiRequest('/admin/products', {
           method: 'POST',
           body: JSON.stringify(payload),
         });
+        productId = res.data?._id ?? res.data?.id ?? null;
+        // A retry after a package-upload failure must PATCH, not re-create
+        if (productId) setEditingProductId(productId);
       }
 
-      setShowProductModal(false);
-      fetchProducts();
+      // Phase 2 (optional): upload the distributable ZIP
+      if (!productPackageFile || !productId) {
+        setShowProductModal(false);
+        resetProductPackageState();
+        fetchProducts();
+        return;
+      }
+
+      setSavePhase('package');
+      const formData = new FormData();
+      formData.append('file', productPackageFile);
+      formData.append('version', productPackageVersion.trim());
+      if (productPackageNotes) formData.append('releaseNotes', productPackageNotes);
+      formData.append('releaseChannel', 'stable');
+      if (productForm.minPhpVersion) formData.append('minPhpVersion', productForm.minPhpVersion);
+      if (productForm.minWordPressVersion) formData.append('minWordPressVersion', productForm.minWordPressVersion);
+      if (productForm.minNodeVersion) formData.append('minNodeVersion', productForm.minNodeVersion);
+      formData.append('publishImmediately', String(productPackagePublish));
+
+      try {
+        await apiRequest(`/admin/products/${productId}/packages`, {
+          method: 'POST',
+          body: formData,
+        });
+        setShowProductModal(false);
+        resetProductPackageState();
+        fetchProducts();
+      } catch (pkgErr: any) {
+        // Product is saved; keep the modal open with actionable feedback so
+        // the admin can fix the ZIP and submit again (updates via PATCH).
+        setModalTab('basic');
+        setProductSavedWhilePackageFailed(true);
+        setPackageBanner(pkgErr.message || 'Package upload failed');
+        const details = (pkgErr as any).details;
+        setPackageErrors(
+          Array.isArray(details?.errors) && details.errors.length
+            ? details.errors
+            : ['The ZIP did not pass validation for this product type.'],
+        );
+        fetchProducts();
+      }
     } catch (err: any) {
       setFormError(err.message || 'Failed to save product');
     } finally {
       setSaving(false);
+      setSavePhase('idle');
     }
   };
 
@@ -594,6 +690,7 @@ export default function AdminProductsPage() {
     if (!selectedProduct) return;
     setPublishingVersion(true);
     setVersionModalError('');
+    setVersionModalDetails([]);
     setValidationResult(null);
 
     try {
@@ -629,6 +726,11 @@ export default function AdminProductsPage() {
       }
     } catch (err: any) {
       setVersionModalError(err.message || 'Failed to upload/publish package');
+      setVersionModalDetails(
+        Array.isArray(err.details?.errors) && err.details.errors.length
+          ? err.details.errors
+          : [],
+      );
     } finally {
       setPublishingVersion(false);
     }
@@ -694,6 +796,7 @@ export default function AdminProductsPage() {
     if (!selectedProduct || !replaceTargetVersion || !replaceFile) return;
     setReplacingFile(true);
     setReplaceError('');
+    setReplaceDetails([]);
 
     try {
       const formData = new FormData();
@@ -713,6 +816,11 @@ export default function AdminProductsPage() {
       setProductVersions(res.data?.versions || res.data || []);
     } catch (err: any) {
       setReplaceError(err.message || 'Failed to replace package file');
+      setReplaceDetails(
+        Array.isArray(err.details?.errors) && err.details.errors.length
+          ? err.details.errors
+          : [],
+      );
     } finally {
       setReplacingFile(false);
     }
@@ -963,6 +1071,34 @@ export default function AdminProductsPage() {
                           <span>v{prod.currentVersion}</span>
                           <Layers className="h-2.5 w-2.5" />
                         </button>
+                        {prod.hasPackageFile === false && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedProduct(prod);
+                              setVersionForm({
+                                version: '',
+                                releaseName: '',
+                                releaseNotes: '',
+                                releaseChannel: 'stable',
+                                minPhpVersion: '7.4',
+                                minWordPressVersion: '6.0',
+                                minNodeVersion: '18.0.0',
+                                publishImmediately: true,
+                              });
+                              setPackageFile(null);
+                              setVersionModalError('');
+                              setVersionModalDetails([]);
+                              setValidationResult(null);
+                              setShowVersionModal(true);
+                            }}
+                            className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-[10px] font-bold text-amber-600 hover:bg-amber-500/20 transition-colors"
+                            title="This product has no distributable ZIP yet — click to upload one"
+                          >
+                            <AlertTriangle className="h-2.5 w-2.5" />
+                            No package file — upload ZIP
+                          </button>
+                        )}
                       </td>
 
                       <td className="px-6 py-4 font-mono text-xs">
@@ -1364,6 +1500,145 @@ export default function AdminProductsPage() {
                       }));
                     }}
                   />
+
+                  {/* Distributable Package (ZIP) — uploaded right after the product is saved */}
+                  <div className="p-5 rounded-2xl border border-border bg-secondary/20 space-y-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-center gap-2.5">
+                        <div className="p-2 rounded-xl bg-indigo-500/10 text-indigo-500">
+                          <FileArchive className="h-4 w-4" />
+                        </div>
+                        <div>
+                          <h4 className="text-sm font-bold text-foreground">Distributable Package (ZIP)</h4>
+                          <p className="text-[11px] text-muted-foreground">
+                            {editingProductId
+                              ? 'Upload a new version’s ZIP — submitted right after your edits are saved.'
+                              : 'Optional now — the ZIP is uploaded and validated right after the product is saved.'}
+                          </p>
+                        </div>
+                      </div>
+                      {productPackageFile && (
+                        <button
+                          type="button"
+                          onClick={() => setProductPackageFile(null)}
+                          className="text-[11px] font-semibold text-muted-foreground hover:text-red-500 transition-colors"
+                        >
+                          Remove file
+                        </button>
+                      )}
+                    </div>
+
+                    <p className="text-[11px] text-muted-foreground">
+                      {productForm.productType === 'wordpress_plugin' && 'Requirements: must contain a main plugin .php file (at the root or one folder deep).'}
+                      {productForm.productType === 'wordpress_theme' && 'Requirements: must contain style.css and index.php.'}
+                      {(productForm.productType === 'nextjs_app' || productForm.productType === 'nextjs_theme' || productForm.productType === 'nextjs_plugin') && 'Requirements: must contain a package.json file.'}
+                      {productForm.productType === 'php_script' && 'Requirements: must contain at least one .php file.'}
+                      {!['wordpress_plugin', 'wordpress_theme', 'nextjs_app', 'nextjs_theme', 'nextjs_plugin', 'php_script'].includes(productForm.productType) && 'Requirements: a non-empty ZIP archive (max 200 MB).'}
+                    </p>
+
+                    <label
+                      onDragOver={(e) => { e.preventDefault(); setZipDragOver(true); }}
+                      onDragLeave={() => setZipDragOver(false)}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        setZipDragOver(false);
+                        const f = e.dataTransfer.files?.[0];
+                        if (f) setProductPackageFile(f);
+                      }}
+                      className={`flex flex-col items-center justify-center gap-1.5 p-6 rounded-2xl border-2 border-dashed cursor-pointer transition-all ${
+                        zipDragOver
+                          ? 'border-indigo-500 bg-indigo-500/10'
+                          : productPackageFile
+                            ? 'border-emerald-500/60 bg-emerald-500/5'
+                            : 'border-border bg-background hover:border-indigo-500/50 hover:bg-indigo-500/5'
+                      } ${savePhase !== 'idle' ? 'opacity-60 pointer-events-none' : ''}`}
+                    >
+                      <input
+                        type="file"
+                        accept=".zip,application/zip,application/x-zip-compressed"
+                        className="hidden"
+                        disabled={savePhase !== 'idle'}
+                        onClick={(e) => { (e.currentTarget as HTMLInputElement).value = ''; }}
+                        onChange={(e) => {
+                          const f = e.target.files?.[0];
+                          if (f) setProductPackageFile(f);
+                        }}
+                      />
+                      {productPackageFile ? (
+                        <>
+                          <FileArchive className="h-6 w-6 text-emerald-500" />
+                          <span className="text-xs font-bold text-foreground">{productPackageFile.name}</span>
+                          <span className="text-[10px] text-muted-foreground">{(productPackageFile.size / 1024 / 1024).toFixed(2)} MB — click or drop to replace</span>
+                        </>
+                      ) : (
+                        <>
+                          <UploadCloud className="h-6 w-6 text-indigo-400" />
+                          <span className="text-xs font-semibold text-foreground">Drop your plugin ZIP here, or click to browse</span>
+                          <span className="text-[10px] text-muted-foreground">.zip only — validated per product type, checksummed automatically</span>
+                        </>
+                      )}
+                    </label>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wide">Version *</label>
+                        <input
+                          type="text"
+                          value={productPackageVersion}
+                          onChange={(e) => setProductPackageVersion(e.target.value)}
+                          placeholder="1.0.0"
+                          disabled={savePhase !== 'idle'}
+                          className="w-full mt-1 px-3 py-2 rounded-xl border border-border bg-background font-mono text-xs"
+                        />
+                        {!editingProductId && (
+                          <p className="text-[10px] text-muted-foreground mt-1">Prefilled from Current Version — must match to attach to the initial release.</p>
+                        )}
+                      </div>
+                      <div>
+                        <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wide">Release Notes (optional)</label>
+                        <textarea
+                          value={productPackageNotes}
+                          onChange={(e) => setProductPackageNotes(e.target.value)}
+                          placeholder="What changed in this release?"
+                          rows={2}
+                          disabled={savePhase !== 'idle'}
+                          className="w-full mt-1 px-3 py-2 rounded-xl border border-border bg-background text-xs resize-none"
+                        />
+                      </div>
+                    </div>
+
+                    <label className="flex items-center gap-2.5 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={productPackagePublish}
+                        onChange={(e) => setProductPackagePublish(e.target.checked)}
+                        disabled={savePhase !== 'idle'}
+                        className="h-4 w-4 rounded border-border accent-indigo-500"
+                      />
+                      <span className="text-xs font-semibold text-foreground">Publish immediately</span>
+                      <span className="text-[10px] text-muted-foreground">— approves the version and makes it live on the updates API (otherwise it stays pending review)</span>
+                    </label>
+
+                    {productSavedWhilePackageFailed && (
+                      <div className="rounded-xl bg-emerald-500/10 border border-emerald-500/20 px-3.5 py-2.5">
+                        <p className="text-xs font-semibold text-emerald-600">
+                          Product details were saved. Fix the package below and press Save again — it will update the same product.
+                        </p>
+                      </div>
+                    )}
+                    {packageBanner && (
+                      <div className="rounded-xl bg-red-500/10 border border-red-500/20 px-3.5 py-2.5 space-y-1.5">
+                        <p className="text-xs font-bold text-red-500">{packageBanner}</p>
+                        {packageErrors.length > 0 && (
+                          <ul className="list-disc list-inside space-y-0.5">
+                            {packageErrors.map((msg, i) => (
+                              <li key={i} className="text-[11px] text-red-400">{msg}</li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
 
@@ -1874,7 +2149,13 @@ export default function AdminProductsPage() {
                     Cancel
                   </Button>
                   <Button type="submit" disabled={saving}>
-                    {saving ? 'Saving...' : editingProductId ? 'Update Product' : 'Create Product'}
+                    {savePhase === 'package'
+                      ? 'Uploading & Validating ZIP...'
+                      : savePhase === 'product'
+                        ? 'Saving Product...'
+                        : editingProductId
+                          ? 'Update Product'
+                          : 'Create Product'}
                   </Button>
                 </div>
               </div>
@@ -1908,6 +2189,13 @@ export default function AdminProductsPage() {
                 <div className="space-y-0.5">
                   <p className="font-bold">Upload / Validation Error</p>
                   <p>{versionModalError}</p>
+                  {versionModalDetails.length > 0 && (
+                    <ul className="list-disc list-inside space-y-0.5 pt-1">
+                      {versionModalDetails.map((msg, i) => (
+                        <li key={i}>{msg}</li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
               </div>
             )}
@@ -2338,9 +2626,18 @@ export default function AdminProductsPage() {
             </div>
 
             {replaceError && (
-              <div className="p-3 rounded-xl bg-destructive/10 border border-destructive/20 text-xs text-destructive flex items-center gap-2">
-                <AlertCircle className="h-4 w-4 shrink-0" />
-                <span>{replaceError}</span>
+              <div className="p-3 rounded-xl bg-destructive/10 border border-destructive/20 text-xs text-destructive flex items-start gap-2">
+                <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                <div className="space-y-0.5">
+                  <span>{replaceError}</span>
+                  {replaceDetails.length > 0 && (
+                    <ul className="list-disc list-inside">
+                      {replaceDetails.map((msg, i) => (
+                        <li key={i}>{msg}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
               </div>
             )}
 

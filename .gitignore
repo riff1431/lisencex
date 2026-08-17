@@ -33,3 +33,6 @@ Thumbs.db
 # Temporary uploads & caches
 backend/uploads/*
 !backend/uploads/.gitkeep
+
+# Runtime-generated license packages (product ZIPs are build artifacts)
+backend/storage/

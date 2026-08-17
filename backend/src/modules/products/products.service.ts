@@ -99,17 +99,21 @@ export class ProductsService {
 
     const enriched = await Promise.all(
       items.map(async (prod) => {
-        const [totalLicenses, activeActivations] = await Promise.all([
+        const [totalLicenses, activeActivations, pkgExists] = await Promise.all([
           this.licenseModel.countDocuments({ productId: prod._id }),
           this.activationModel.countDocuments({
             productId: prod._id,
             status: ActivationStatus.ACTIVE,
           }),
+          // Any version with a real file attached? Lets the admin list flag
+          // products that still need their distributable ZIP uploaded.
+          this.versionModel.exists({ productId: prod._id, storagePath: { $ne: null } }),
         ]);
         return {
           ...prod,
           totalLicenses,
           activeActivations,
+          hasPackageFile: Boolean(pkgExists),
         };
       }),
     );

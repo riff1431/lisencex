@@ -154,7 +154,15 @@ export async function apiRequest<T = any>(
   }
 
   if (!response.ok || data.success === false) {
-    throw new Error(data.message || `Request failed with status ${response.status}`);
+    // Carry the full error envelope (details/code/status) so callers can show
+    // structured validation errors, not just the top-level message.
+    const error = new Error(
+      data.message || `Request failed with status ${response.status}`,
+    ) as Error & { details?: any; code?: string; status?: number };
+    error.details = data.details ?? undefined;
+    error.code = data.code;
+    error.status = response.status;
+    throw error;
   }
 
   return data;

@@ -94,12 +94,17 @@ export class PackagesService {
       throw new NotFoundException('Product not found');
     }
 
-    // 2. Prevent duplicate version
+    // 2. Prevent duplicate version — but a file-less version auto-created by
+    // products.create() is a placeholder: attach the uploaded file to it
+    // instead of rejecting (creating fresh products with a ZIP would
+    // otherwise always conflict on currentVersion).
     const existing = await this.versionModel.findOne({
       productId: new Types.ObjectId(productId),
       version: dto.version.trim(),
     });
-    if (existing) {
+    const isPlaceholder =
+      Boolean(existing) && !existing!.storagePath && !existing!.downloadPackageUrl;
+    if (existing && !isPlaceholder) {
       this.cleanupFile(file.path);
       throw new BadRequestException(
         `Version ${dto.version} already exists for this product. Use "replace" action to update the package.`,
@@ -111,10 +116,12 @@ export class PackagesService {
 
     if (!validation.valid) {
       this.cleanupFile(file.path);
+      // `details` is the field the global exception filter passes through to
+      // clients — validator errors/warnings go there so the admin UI can show
+      // exactly what is wrong with the archive.
       throw new BadRequestException({
         message: 'Package validation failed',
-        errors: validation.errors,
-        warnings: validation.warnings,
+        details: { errors: validation.errors, warnings: validation.warnings },
       });
     }
 
@@ -129,32 +136,54 @@ export class PackagesService {
     fs.mkdirSync(destDir, { recursive: true });
     fs.renameSync(file.path, destPath);
 
-    // 6. Create version record
+    // 6. Create (or attach to placeholder) version record
     const isPublic = Boolean(dto.publishImmediately);
-    const versionDoc = await this.versionModel.create({
-      productId: new Types.ObjectId(productId),
-      version:              dto.version.trim(),
-      releaseName:          dto.releaseName ?? '',
-      releaseNotes:         dto.releaseNotes ?? '',
-      releaseChannel:       dto.releaseChannel ?? ReleaseChannel.STABLE,
+    const fileFields = {
+      releaseChannel:       dto.releaseChannel ?? existing?.releaseChannel ?? ReleaseChannel.STABLE,
       packageStatus:        isPublic ? PackageStatus.APPROVED : PackageStatus.PENDING,
       originalFileName:     file.originalname,
       storagePath:          destPath,
       fileChecksum:         checksum,
       fileSize:             file.size,
       mimeType:             file.mimetype,
-      minPhpVersion:        dto.minPhpVersion ?? undefined,
-      minWordPressVersion:  dto.minWordPressVersion ?? undefined,
-      minNodeVersion:       dto.minNodeVersion ?? undefined,
+      minPhpVersion:        dto.minPhpVersion ?? existing?.minPhpVersion ?? undefined,
+      minWordPressVersion:  dto.minWordPressVersion ?? existing?.minWordPressVersion ?? undefined,
+      minNodeVersion:       dto.minNodeVersion ?? existing?.minNodeVersion ?? undefined,
       validationPassed:     validation.valid,
       validationMessages:   [...validation.errors, ...validation.warnings],
       zipEntries:           validation.entries,
-      isPublic,
       downloadsEnabled:     true,
-      publishedAt:          isPublic ? new Date() : undefined,
       uploadedBy:           dto.uploadedBy ? new Types.ObjectId(dto.uploadedBy) : undefined,
       uploadedByEmail:      dto.uploadedByEmail ?? undefined,
-    });
+    };
+
+    let versionDoc;
+    if (existing) {
+      // Attach to the auto-created placeholder — must be an in-place update,
+      // the {productId, version} pair has a unique index.
+      const $set: Record<string, any> = {
+        ...fileFields,
+        releaseName:  dto.releaseName  || existing.releaseName  || '',
+        releaseNotes: dto.releaseNotes || existing.releaseNotes || '',
+        isPublic,
+      };
+      if (isPublic) {
+        $set.publishedAt = existing.publishedAt ?? new Date();
+      }
+      versionDoc = await this.versionModel.findByIdAndUpdate(
+        existing._id, { $set }, { new: true },
+      );
+    } else {
+      versionDoc = await this.versionModel.create({
+        productId: new Types.ObjectId(productId),
+        version:   dto.version.trim(),
+        releaseName:  dto.releaseName  ?? '',
+        releaseNotes: dto.releaseNotes ?? '',
+        ...fileFields,
+        isPublic,
+        publishedAt: isPublic ? new Date() : undefined,
+      });
+    }
 
     // 7. If publishing immediately, bump product's currentVersion
     if (isPublic) {
@@ -292,7 +321,10 @@ export class PackagesService {
     const validation = await ZipPackageValidator.validate(file.path, product.productType as ProductType);
     if (!validation.valid) {
       this.cleanupFile(file.path);
-      throw new BadRequestException({ message: 'Replacement package validation failed', errors: validation.errors });
+      throw new BadRequestException({
+        message: 'Replacement package validation failed',
+        details: { errors: validation.errors, warnings: validation.warnings },
+      });
     }
 
     // Compute checksum
