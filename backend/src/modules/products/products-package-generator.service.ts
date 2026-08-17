@@ -3,7 +3,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { ConfigService } from '@nestjs/config';
 import { Response } from 'express';
-const { ZipArchive } = require('archiver');
+import archiver from 'archiver';
 import * as crypto from 'crypto';
 import { Product, ProductDocument } from '../../database/schemas/product.schema';
 import { ProductCredential, ProductCredentialDocument } from '../../database/schemas/product-credential.schema';
@@ -183,7 +183,7 @@ export class ProductsPackageGeneratorService {
     res.setHeader('Content-Type', 'application/zip');
     res.setHeader('Content-Disposition', `attachment; filename="${zipFilename}"`);
 
-    const archive = new ZipArchive({
+    const archive = archiver('zip', {
       zlib: { level: 9 },
     });
 
