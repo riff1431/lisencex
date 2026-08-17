@@ -13,6 +13,12 @@ export const LEAKED_ACTIVATION_SECRET =
 const DEV_FALLBACK_JWT_SECRET = 'dev_only_insecure_jwt_secret_do_not_use_in_production';
 const DEV_FALLBACK_ACTIVATION_SECRET = 'dev_only_insecure_activation_secret';
 
+// Ephemeral secrets must be generated exactly ONCE per process: the JWT
+// signing module and the passport verify strategy both resolve the secret
+// independently, and two different randoms would invalidate every token.
+let cachedEphemeralJwtSecret: string | null = null;
+let cachedEphemeralActivationSecret: string | null = null;
+
 export function isProduction(): boolean {
   return process.env.NODE_ENV === 'production';
 }
@@ -32,12 +38,15 @@ export function resolveJwtSecret(configValue: string | undefined): string {
   }
 
   if (isProduction()) {
-    new Logger('Security').error(
-      'JWT_SECRET is missing or still equals the leaked default from the repository. ' +
-        'Falling back to a random per-boot secret — all user sessions will be invalidated on every restart. ' +
-        'Set a strong JWT_SECRET environment variable immediately.',
-    );
-    return crypto.randomBytes(48).toString('hex');
+    if (!cachedEphemeralJwtSecret) {
+      new Logger('Security').error(
+        'JWT_SECRET is missing or still equals the leaked default from the repository. ' +
+          'Falling back to a random per-boot secret — all user sessions will be invalidated on every restart. ' +
+          'Set a strong JWT_SECRET environment variable immediately.',
+      );
+      cachedEphemeralJwtSecret = crypto.randomBytes(48).toString('hex');
+    }
+    return cachedEphemeralJwtSecret;
   }
 
   return DEV_FALLBACK_JWT_SECRET;
@@ -52,12 +61,15 @@ export function resolveActivationSecret(configValue: string | undefined): string
   }
 
   if (isProduction()) {
-    new Logger('Security').error(
-      'ACTIVATION_SECRET is missing or still equals the leaked default from the repository. ' +
-        'Falling back to a random per-boot secret — previously issued activation tokens will be rejected. ' +
-        'Set a strong ACTIVATION_SECRET environment variable immediately.',
-    );
-    return crypto.randomBytes(48).toString('hex');
+    if (!cachedEphemeralActivationSecret) {
+      new Logger('Security').error(
+        'ACTIVATION_SECRET is missing or still equals the leaked default from the repository. ' +
+          'Falling back to a random per-boot secret — previously issued activation tokens will be rejected. ' +
+          'Set a strong ACTIVATION_SECRET environment variable immediately.',
+      );
+      cachedEphemeralActivationSecret = crypto.randomBytes(48).toString('hex');
+    }
+    return cachedEphemeralActivationSecret;
   }
 
   return DEV_FALLBACK_ACTIVATION_SECRET;
