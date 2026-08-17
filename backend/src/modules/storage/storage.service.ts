@@ -171,6 +171,21 @@ export class StorageService implements OnModuleInit {
         },
         lastTestStatus: 'untested',
       });
+    } else if (!minio.minioConfig?.endpoint && process.env.MINIO_ENDPOINT) {
+      // Doc was seeded empty (deployed before env vars were set) — fill it
+      // from env so an env-driven setup works without the admin UI. Once a
+      // endpoint is present (env or UI), it is never overwritten again.
+      minio.minioConfig = {
+        endpoint: process.env.MINIO_ENDPOINT,
+        accessKeyId: process.env.MINIO_ACCESS_KEY_ID || '',
+        secretAccessKey: this.encryptSecret(process.env.MINIO_SECRET_ACCESS_KEY || ''),
+        region: process.env.MINIO_REGION || 'us-east-1',
+        bucket: process.env.MINIO_BUCKET || 'marketplace',
+        publicUrl: '',
+        pathPrefix: '',
+      };
+      await minio.save();
+      this.logger.log('MinIO storage config auto-filled from environment variables');
     }
   }
 
