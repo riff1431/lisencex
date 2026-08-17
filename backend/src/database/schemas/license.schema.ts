@@ -84,7 +84,7 @@ export class License {
   @Prop({ type: Boolean, default: false })
   isArchived: boolean;
 
-  @Prop({ type: Boolean, default: false, index: true })
+  @Prop({ type: Boolean, default: false })
   isSandbox: boolean;
 
   @Prop({ type: String, default: null })

@@ -68,7 +68,7 @@ export class Activation {
   @Prop({ type: String, default: null })
   deactivationReason?: string;
 
-  @Prop({ type: Boolean, default: false, index: true })
+  @Prop({ type: Boolean, default: false })
   isSandbox: boolean;
 
   @Prop({ type: String, default: null })
@@ -98,10 +98,10 @@ export class Activation {
   @Prop({ type: String, default: 'healthy' })
   apiHealth: string;
 
-  @Prop({ type: String, default: 'healthy', index: true })
+  @Prop({ type: String, default: 'healthy' })
   healthStatus: string;
 
-  @Prop({ type: Boolean, default: false, index: true })
+  @Prop({ type: Boolean, default: false })
   flaggedForReview: boolean;
 
   @Prop({ type: Boolean, default: false })

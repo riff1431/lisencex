@@ -84,7 +84,6 @@ export class Media {
     required: true,
     enum: FileCategory,
     default: FileCategory.GENERAL,
-    index: true,
   })
   folder: FileCategory;
 

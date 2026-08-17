@@ -116,6 +116,5 @@ export class LicensePlan {
 
 export const LicensePlanSchema = SchemaFactory.createForClass(LicensePlan);
 
-LicensePlanSchema.index({ slug: 1 }, { unique: true });
 LicensePlanSchema.index({ isActive: 1 });
 LicensePlanSchema.index({ isDefault: 1 });
