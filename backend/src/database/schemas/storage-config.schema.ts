@@ -7,6 +7,7 @@ export enum StorageProviderType {
   LOCAL = 'local',
   S3 = 's3',
   R2 = 'r2',
+  MINIO = 'minio',
 }
 
 @Schema({ _id: false })
@@ -69,6 +70,30 @@ export class R2StorageOptions {
   pathPrefix: string;
 }
 
+@Schema({ _id: false })
+export class MinioStorageOptions {
+  @Prop({ default: '' })
+  endpoint: string; // e.g. http://minio.internal:9000 or https://minio.example.com
+
+  @Prop({ default: '' })
+  accessKeyId: string;
+
+  @Prop({ default: '' })
+  secretAccessKey: string; // Encrypted in DB
+
+  @Prop({ default: 'us-east-1' })
+  region: string;
+
+  @Prop({ default: 'marketplace' })
+  bucket: string;
+
+  @Prop({ default: '' })
+  publicUrl: string; // Optional friendly base URL (CDN/proxied domain)
+
+  @Prop({ default: '' })
+  pathPrefix: string;
+}
+
 @Schema({ timestamps: true })
 export class StorageConfig {
   @Prop({
@@ -93,6 +118,9 @@ export class StorageConfig {
 
   @Prop({ type: R2StorageOptions, default: () => ({}) })
   r2Config: R2StorageOptions;
+
+  @Prop({ type: MinioStorageOptions, default: () => ({}) })
+  minioConfig: MinioStorageOptions;
 
   @Prop({ type: Date })
   lastTestedAt?: Date;

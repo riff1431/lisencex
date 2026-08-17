@@ -55,7 +55,7 @@ export default function AdminStorageSettingsPage() {
   // Migration Modal State
   const [migrateOpen, setMigrateOpen] = useState(false);
   const [migrateSource, setMigrateSource] = useState('local');
-  const [migrateTarget, setMigrateTarget] = useState('r2');
+  const [migrateTarget, setMigrateTarget] = useState('minio');
   const [migrateCategory, setMigrateCategory] = useState('');
   const [migrating, setMigrating] = useState(false);
   const [migrationResult, setMigrationResult] = useState<any>(null);
@@ -175,6 +175,7 @@ export default function AdminStorageSettingsPage() {
       localConfig: { ...(provider.localConfig || {}) },
       s3Config: { ...(provider.s3Config || {}) },
       r2Config: { ...(provider.r2Config || {}) },
+      minioConfig: { ...(provider.minioConfig || {}) },
     });
   };
 
@@ -196,6 +197,8 @@ export default function AdminStorageSettingsPage() {
         payload.s3Config = providerForm.s3Config;
       } else if (editingProvider === 'r2') {
         payload.r2Config = providerForm.r2Config;
+      } else if (editingProvider === 'minio') {
+        payload.minioConfig = providerForm.minioConfig;
       }
 
       const res = await apiRequest(`/admin/storage/config/${editingProvider}`, {
@@ -393,19 +396,22 @@ export default function AdminStorageSettingsPage() {
           Configured Storage Providers
         </h2>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5">
           {configs.map((provider) => {
             const isLocal = provider.provider === 'local';
             const isS3 = provider.provider === 's3';
             const isR2 = provider.provider === 'r2';
+            const isMinio = provider.provider === 'minio';
 
             const name = isLocal
               ? 'Local Filesystem'
               : isS3
               ? 'Amazon S3'
-              : 'Cloudflare R2';
+              : isR2
+              ? 'Cloudflare R2'
+              : 'MinIO Object Storage';
 
-            const icon = isLocal ? HardDrive : isS3 ? Cloud : Zap;
+            const icon = isLocal ? HardDrive : isS3 ? Cloud : isR2 ? Zap : Server;
             const IconComponent = icon;
 
             const isDefault = provider.isDefault;
@@ -511,6 +517,23 @@ export default function AdminStorageSettingsPage() {
                       </>
                     )}
 
+                    {isMinio && (
+                      <>
+                        <div className="flex justify-between text-muted-foreground">
+                          <span>Bucket:</span>
+                          <span className="font-semibold text-foreground truncate max-w-[140px]">
+                            {provider.minioConfig?.bucket || '(Not configured)'}
+                          </span>
+                        </div>
+                        <div className="flex justify-between text-muted-foreground">
+                          <span>Endpoint:</span>
+                          <span className="font-semibold text-foreground truncate max-w-[140px]" title={provider.minioConfig?.endpoint}>
+                            {provider.minioConfig?.endpoint || '(Not configured)'}
+                          </span>
+                        </div>
+                      </>
+                    )}
+
                     <div className="flex justify-between text-muted-foreground pt-1 border-t border-border/40">
                       <span>Health Check:</span>
                       <span
@@ -610,6 +633,7 @@ export default function AdminStorageSettingsPage() {
               <option value="local">Local</option>
               <option value="s3">Amazon S3</option>
               <option value="r2">Cloudflare R2</option>
+              <option value="minio">MinIO</option>
             </select>
 
             <select
@@ -678,6 +702,8 @@ export default function AdminStorageSettingsPage() {
                             ? 'bg-amber-500/10 text-amber-500'
                             : file.storageProvider === 'r2'
                             ? 'bg-purple-500/10 text-purple-500'
+                            : file.storageProvider === 'minio'
+                            ? 'bg-teal-500/10 text-teal-500'
                             : 'bg-indigo-500/10 text-indigo-500'
                         }`}
                       >
@@ -1037,6 +1063,131 @@ export default function AdminStorageSettingsPage() {
                 </div>
               )}
 
+              {editingProvider === 'minio' && (
+                <div className="space-y-3">
+                  <div>
+                    <label className="font-semibold text-foreground block mb-1">MinIO Server Endpoint URL</label>
+                    <input
+                      type="text"
+                      value={providerForm.minioConfig?.endpoint || ''}
+                      onChange={(e) =>
+                        setProviderForm({
+                          ...providerForm,
+                          minioConfig: { ...providerForm.minioConfig, endpoint: e.target.value },
+                        })
+                      }
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-border bg-background text-xs font-mono"
+                      placeholder="http://minio.your-server.com:9000"
+                      required
+                    />
+                    <p className="text-[10px] text-muted-foreground mt-1">
+                      The API endpoint MinIO gives you (S3-compatible, path-style)
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="font-semibold text-foreground block mb-1">Access Key ID</label>
+                      <input
+                        type="text"
+                        value={providerForm.minioConfig?.accessKeyId || ''}
+                        onChange={(e) =>
+                          setProviderForm({
+                            ...providerForm,
+                            minioConfig: { ...providerForm.minioConfig, accessKeyId: e.target.value },
+                          })
+                        }
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-border bg-background text-xs font-mono"
+                        placeholder="minioadmin-access-key"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="font-semibold text-foreground block mb-1">Secret Access Key</label>
+                      <input
+                        type="password"
+                        value={providerForm.minioConfig?.secretAccessKey || ''}
+                        onChange={(e) =>
+                          setProviderForm({
+                            ...providerForm,
+                            minioConfig: { ...providerForm.minioConfig, secretAccessKey: e.target.value },
+                          })
+                        }
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-border bg-background text-xs font-mono"
+                        placeholder="••••••••••••••••"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="font-semibold text-foreground block mb-1">Bucket Name</label>
+                      <input
+                        type="text"
+                        value={providerForm.minioConfig?.bucket || ''}
+                        onChange={(e) =>
+                          setProviderForm({
+                            ...providerForm,
+                            minioConfig: { ...providerForm.minioConfig, bucket: e.target.value },
+                          })
+                        }
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-border bg-background text-xs font-mono"
+                        placeholder="marketplace"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="font-semibold text-foreground block mb-1">Region</label>
+                      <input
+                        type="text"
+                        value={providerForm.minioConfig?.region || ''}
+                        onChange={(e) =>
+                          setProviderForm({
+                            ...providerForm,
+                            minioConfig: { ...providerForm.minioConfig, region: e.target.value },
+                          })
+                        }
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-border bg-background text-xs font-mono"
+                        placeholder="us-east-1"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="font-semibold text-foreground block mb-1">Public Base URL (Optional)</label>
+                      <input
+                        type="text"
+                        value={providerForm.minioConfig?.publicUrl || ''}
+                        onChange={(e) =>
+                          setProviderForm({
+                            ...providerForm,
+                            minioConfig: { ...providerForm.minioConfig, publicUrl: e.target.value },
+                          })
+                        }
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-border bg-background text-xs font-mono"
+                        placeholder="https://cdn.example.com/marketplace"
+                      />
+                    </div>
+                    <div>
+                      <label className="font-semibold text-foreground block mb-1">Path Prefix (Optional)</label>
+                      <input
+                        type="text"
+                        value={providerForm.minioConfig?.pathPrefix || ''}
+                        onChange={(e) =>
+                          setProviderForm({
+                            ...providerForm,
+                            minioConfig: { ...providerForm.minioConfig, pathPrefix: e.target.value },
+                          })
+                        }
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-border bg-background text-xs font-mono"
+                        placeholder="media"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div className="flex items-center justify-end gap-2 pt-4 border-t border-border">
                 <Button type="button" variant="outline" onClick={() => setEditingProvider(null)}>
                   Cancel
@@ -1083,6 +1234,7 @@ export default function AdminStorageSettingsPage() {
                     <option value="local">Local Filesystem</option>
                     <option value="s3">Amazon S3</option>
                     <option value="r2">Cloudflare R2</option>
+                    <option value="minio">MinIO</option>
                   </select>
                 </div>
 
@@ -1093,6 +1245,7 @@ export default function AdminStorageSettingsPage() {
                     onChange={(e) => setMigrateTarget(e.target.value)}
                     className="w-full px-3 py-2 rounded-xl border border-border bg-background font-semibold"
                   >
+                    <option value="minio">MinIO</option>
                     <option value="r2">Cloudflare R2</option>
                     <option value="s3">Amazon S3</option>
                     <option value="local">Local Filesystem</option>

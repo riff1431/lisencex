@@ -26,6 +26,7 @@ import { StorageProvider } from './providers/storage-provider.interface';
 import { LocalStorageProvider } from './providers/local-storage.provider';
 import { S3StorageProvider } from './providers/s3-storage.provider';
 import { R2StorageProvider } from './providers/r2-storage.provider';
+import { MinioStorageProvider } from './providers/minio-storage.provider';
 import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 
@@ -35,6 +36,7 @@ export class StorageService implements OnModuleInit {
   private readonly localProvider: LocalStorageProvider = new LocalStorageProvider();
   private readonly s3Provider: S3StorageProvider = new S3StorageProvider();
   private readonly r2Provider: R2StorageProvider = new R2StorageProvider();
+  private readonly minioProvider: MinioStorageProvider = new MinioStorageProvider();
 
   // Encryption key derived from JWT_SECRET or fallback
   private readonly encryptionKey: Buffer;
@@ -151,6 +153,25 @@ export class StorageService implements OnModuleInit {
         lastTestStatus: 'untested',
       });
     }
+
+    const minio = await this.configModel.findOne({ provider: StorageProviderType.MINIO });
+    if (!minio) {
+      await this.configModel.create({
+        provider: StorageProviderType.MINIO,
+        isDefault: false,
+        isEnabled: false,
+        minioConfig: {
+          endpoint: process.env.MINIO_ENDPOINT || '',
+          accessKeyId: process.env.MINIO_ACCESS_KEY_ID || '',
+          secretAccessKey: this.encryptSecret(process.env.MINIO_SECRET_ACCESS_KEY || ''),
+          region: process.env.MINIO_REGION || 'us-east-1',
+          bucket: process.env.MINIO_BUCKET || 'marketplace',
+          publicUrl: '',
+          pathPrefix: '',
+        },
+        lastTestStatus: 'untested',
+      });
+    }
   }
 
   /**
@@ -171,6 +192,11 @@ export class StorageService implements OnModuleInit {
         this.r2Provider.setConfig({
           ...c.r2Config,
           secretAccessKey: this.decryptSecret(c.r2Config.secretAccessKey),
+        });
+      } else if (c.provider === StorageProviderType.MINIO && c.minioConfig) {
+        this.minioProvider.setConfig({
+          ...c.minioConfig,
+          secretAccessKey: this.decryptSecret(c.minioConfig.secretAccessKey),
         });
       }
     }
@@ -206,6 +232,8 @@ export class StorageService implements OnModuleInit {
         return this.s3Provider;
       case StorageProviderType.R2:
         return this.r2Provider;
+      case StorageProviderType.MINIO:
+        return this.minioProvider;
       case StorageProviderType.LOCAL:
       default:
         return this.localProvider;
@@ -461,6 +489,14 @@ export class StorageService implements OnModuleInit {
               : customConfig.secretAccessKey,
           });
           break;
+        case StorageProviderType.MINIO:
+          provider = new MinioStorageProvider({
+            ...customConfig,
+            secretAccessKey: customConfig.secretAccessKey?.startsWith('enc:')
+              ? this.decryptSecret(customConfig.secretAccessKey)
+              : customConfig.secretAccessKey,
+          });
+          break;
         case StorageProviderType.LOCAL:
         default:
           provider = new LocalStorageProvider(customConfig);
@@ -531,6 +567,17 @@ export class StorageService implements OnModuleInit {
       doc.r2Config = {
         ...doc.r2Config,
         ...payload.r2Config,
+        secretAccessKey: newSecret
+          ? (newSecret.includes('••••') ? existingSecret : this.encryptSecret(newSecret))
+          : existingSecret,
+      };
+    } else if (providerType === StorageProviderType.MINIO && payload.minioConfig) {
+      const existingSecret = doc.minioConfig?.secretAccessKey || '';
+      const newSecret = payload.minioConfig.secretAccessKey;
+
+      doc.minioConfig = {
+        ...doc.minioConfig,
+        ...payload.minioConfig,
         secretAccessKey: newSecret
           ? (newSecret.includes('••••') ? existingSecret : this.encryptSecret(newSecret))
           : existingSecret,
@@ -701,6 +748,7 @@ export class StorageService implements OnModuleInit {
       local: { count: 0, sizeBytes: 0 },
       s3: { count: 0, sizeBytes: 0 },
       r2: { count: 0, sizeBytes: 0 },
+      minio: { count: 0, sizeBytes: 0 },
     };
 
     const byCategory: Record<string, { count: number; sizeBytes: number }> = {};
@@ -790,6 +838,9 @@ export class StorageService implements OnModuleInit {
       }
       if (sanitized.r2Config?.secretAccessKey) {
         sanitized.r2Config.secretAccessKey = '••••••••••••••••';
+      }
+      if (sanitized.minioConfig?.secretAccessKey) {
+        sanitized.minioConfig.secretAccessKey = '••••••••••••••••';
       }
       return sanitized;
     });
