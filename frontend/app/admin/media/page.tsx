@@ -34,7 +34,7 @@ import {
   ShieldCheck,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { apiRequest } from '@/lib/api';
+import { apiRequest, API_BASE_URL } from '@/lib/api';
 
 export default function AdminMediaLibraryPage() {
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
@@ -173,31 +173,22 @@ export default function AdminMediaLibraryPage() {
       }
       formData.append('folder', uploadFolder);
 
-      const res = await fetch('http://localhost:5000/api/v1/admin/media/batch-upload', {
+      const res = await apiRequest('/admin/media/batch-upload', {
         method: 'POST',
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem('auth_token') || ''}`,
-        },
         body: formData,
       });
 
       setUploadProgress(85);
-      const data = await res.json();
-      if (res.ok) {
-        setUploadProgress(100);
-        setTimeout(() => {
-          setUploading(false);
-          setUploadOpen(false);
-          setFeedback({
-            type: 'success',
-            message: `Successfully uploaded ${data.data?.count || files.length} file(s) to Media Library!`,
-          });
-          loadMedia();
-        }, 500);
-      } else {
-        alert(data.message || 'Upload failed');
+      setUploadProgress(100);
+      setTimeout(() => {
         setUploading(false);
-      }
+        setUploadOpen(false);
+        setFeedback({
+          type: 'success',
+          message: `Successfully uploaded ${res.data?.count || files.length} file(s) to Media Library!`,
+        });
+        loadMedia();
+      }, 500);
     } catch (err: any) {
       alert(err.message || 'Upload error');
       setUploading(false);
@@ -211,22 +202,14 @@ export default function AdminMediaLibraryPage() {
       const formData = new FormData();
       formData.append('file', files[0]);
 
-      const res = await fetch(`http://localhost:5000/api/v1/admin/media/${inspectingMedia.mediaId}/replace`, {
+      await apiRequest(`/admin/media/${inspectingMedia.mediaId}/replace`, {
         method: 'POST',
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem('auth_token') || ''}`,
-        },
         body: formData,
       });
 
-      const data = await res.json();
-      if (res.ok) {
-        setFeedback({ type: 'success', message: 'Media binary file replaced successfully!' });
-        handleInspect(inspectingMedia);
-        loadMedia();
-      } else {
-        alert(data.message || 'Replace failed');
-      }
+      setFeedback({ type: 'success', message: 'Media binary file replaced successfully!' });
+      handleInspect(inspectingMedia);
+      loadMedia();
     } catch (err: any) {
       alert(err.message || 'Replace error');
     }
@@ -700,17 +683,17 @@ export default function AdminMediaLibraryPage() {
                 <div className="w-full h-full flex items-center justify-center bg-secondary/30">
                   {isImage ? (
                     <img
-                      src={item.publicUrl || `http://localhost:5000/api/v1/public/storage/serve/${item.mediaId}`}
+                      src={item.publicUrl || `${API_BASE_URL}/public/storage/serve/${item.mediaId}`}
                       alt={item.title || item.originalName}
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                       onError={(e) => {
                         const target = e.currentTarget;
                         if (!target.dataset.triedFallback) {
                           target.dataset.triedFallback = '1';
-                          target.src = `http://localhost:5000/api/v1/public/media/${encodeURIComponent(item.fileName || item.mediaId)}`;
+                          target.src = `${API_BASE_URL}/public/media/${encodeURIComponent(item.fileName || item.mediaId)}`;
                         } else if (target.dataset.triedFallback === '1') {
                           target.dataset.triedFallback = '2';
-                          target.src = `http://localhost:5000/api/v1/public/storage/serve/${encodeURIComponent(item.mediaId)}`;
+                          target.src = `${API_BASE_URL}/public/storage/serve/${encodeURIComponent(item.mediaId)}`;
                         }
                       }}
                     />
@@ -805,14 +788,14 @@ export default function AdminMediaLibraryPage() {
                         <div className="h-11 w-11 rounded-xl bg-secondary border border-border overflow-hidden shrink-0 flex items-center justify-center">
                           {isImage ? (
                             <img
-                              src={item.publicUrl || `http://localhost:5000/api/v1/public/storage/serve/${item.mediaId}`}
+                              src={item.publicUrl || `${API_BASE_URL}/public/storage/serve/${item.mediaId}`}
                               alt={item.title}
                               className="w-full h-full object-cover"
                               onError={(e) => {
                                 const target = e.currentTarget;
                                 if (!target.dataset.triedFallback) {
                                   target.dataset.triedFallback = '1';
-                                  target.src = `http://localhost:5000/api/v1/public/media/${encodeURIComponent(item.fileName || item.mediaId)}`;
+                                  target.src = `${API_BASE_URL}/public/media/${encodeURIComponent(item.fileName || item.mediaId)}`;
                                 }
                               }}
                             />
@@ -947,14 +930,14 @@ export default function AdminMediaLibraryPage() {
                 <div className="aspect-video w-full rounded-2xl bg-secondary/40 border border-border overflow-hidden flex items-center justify-center shadow-xs">
                   {inspectingMedia.mimeType?.startsWith('image/') ? (
                     <img
-                      src={inspectingMedia.publicUrl || `http://localhost:5000/api/v1/public/storage/serve/${inspectingMedia.mediaId}`}
+                      src={inspectingMedia.publicUrl || `${API_BASE_URL}/public/storage/serve/${inspectingMedia.mediaId}`}
                       alt={inspectingMedia.title}
                       className="w-full h-full object-contain"
                       onError={(e) => {
                         const target = e.currentTarget;
                         if (!target.dataset.triedFallback) {
                           target.dataset.triedFallback = '1';
-                          target.src = `http://localhost:5000/api/v1/public/media/${encodeURIComponent(inspectingMedia.fileName || inspectingMedia.mediaId)}`;
+                          target.src = `${API_BASE_URL}/public/media/${encodeURIComponent(inspectingMedia.fileName || inspectingMedia.mediaId)}`;
                         }
                       }}
                     />
@@ -1137,7 +1120,7 @@ export default function AdminMediaLibraryPage() {
                       <input
                         type="text"
                         readOnly
-                        value={inspectingMedia.publicUrl || `http://localhost:5000/api/v1/public/storage/serve/${inspectingMedia.mediaId}`}
+                        value={inspectingMedia.publicUrl || `${API_BASE_URL}/public/storage/serve/${inspectingMedia.mediaId}`}
                         className="flex-1 px-3 py-2 rounded-xl border border-border bg-secondary/50 font-mono text-[11px]"
                       />
                       <Button
@@ -1147,7 +1130,7 @@ export default function AdminMediaLibraryPage() {
                         onClick={() =>
                           copyToClipboard(
                             inspectingMedia.publicUrl ||
-                              `http://localhost:5000/api/v1/public/storage/serve/${inspectingMedia.mediaId}`,
+                              `${API_BASE_URL}/public/storage/serve/${inspectingMedia.mediaId}`,
                           )
                         }
                       >
