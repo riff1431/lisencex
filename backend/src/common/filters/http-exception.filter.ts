@@ -7,7 +7,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
-import { v4 as uuidv4 } from 'uuid';
+import * as crypto from 'crypto';
 import { ErrorCode } from '../enums/error-code.enum';
 import { getApiResponseViewerTemplate } from '../templates/api-response-viewer.template';
 
@@ -21,7 +21,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const request = ctx.getRequest<Request>();
 
     const requestId =
-      (request.headers['x-request-id'] as string) || uuidv4();
+      (request.headers['x-request-id'] as string) || crypto.randomUUID();
 
     let status = HttpStatus.INTERNAL_SERVER_ERROR;
     let code: string = ErrorCode.INTERNAL_ERROR;

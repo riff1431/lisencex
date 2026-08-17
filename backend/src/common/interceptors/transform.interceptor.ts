@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
-import { v4 as uuidv4 } from 'uuid';
+import * as crypto from 'crypto';
 import { getApiResponseViewerTemplate } from '../templates/api-response-viewer.template';
 
 export interface ApiResponse<T> {
@@ -26,7 +26,7 @@ export class TransformInterceptor<T>
     next: CallHandler,
   ): Observable<any> {
     const startTime = performance.now();
-    const requestId = uuidv4();
+    const requestId = crypto.randomUUID();
     const request = context.switchToHttp().getRequest();
     const response = context.switchToHttp().getResponse();
     

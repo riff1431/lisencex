@@ -7,7 +7,7 @@ import {
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { extname, basename } from 'path';
-import { v4 as uuidv4 } from 'uuid';
+import * as crypto from 'crypto';
 import { Product, ProductDocument } from '../../database/schemas/product.schema';
 import { Category, CategoryDocument } from '../../database/schemas/category.schema';
 import { AuditLog, AuditLogDocument } from '../../database/schemas/audit-log.schema';
@@ -204,7 +204,7 @@ export class MediaService {
       }
     }
 
-    const mediaId = uuidv4();
+    const mediaId = crypto.randomUUID();
     const publicUrl = storedFile.publicUrl || `/api/v1/public/storage/serve/${storedFile.fileId}`;
 
     const mediaDoc = await this.mediaModel.create({

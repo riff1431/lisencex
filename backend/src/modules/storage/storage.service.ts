@@ -9,7 +9,6 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import * as crypto from 'crypto';
 import { extname, basename } from 'path';
-import { v4 as uuidv4 } from 'uuid';
 import {
   StorageConfig,
   StorageConfigDocument,
@@ -234,7 +233,7 @@ export class StorageService implements OnModuleInit {
 
     const { provider, type } = await this.getActiveProvider();
 
-    const fileId = uuidv4();
+    const fileId = crypto.randomUUID();
     const originalExt = extname(file.originalname).toLowerCase();
     const cleanBasename = basename(file.originalname, originalExt)
       .toLowerCase()
