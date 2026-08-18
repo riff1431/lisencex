@@ -130,8 +130,7 @@ export default function AdminPurchasesPage() {
           >
             <option value="all">All Sources</option>
             <option value="envato">Envato Market</option>
-            <option value="manual">Direct / Manual</option>
-            <option value="stripe">Stripe</option>
+            <option value="internal">Internal / Direct</option>
           </select>
         </div>
       </div>
