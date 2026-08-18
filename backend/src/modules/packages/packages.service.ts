@@ -368,7 +368,13 @@ export class PackagesService {
    * Time-limited signed URL for an object-stored package, using the provider
    * recorded on the version (not the currently-active one).
    */
-  async getPackageSignedUrl(dl: { storageKey: string; storageProvider?: string }, expiresInSeconds = 300): Promise<string> {
+  async getPackageSignedUrl(
+    dl: { storageKey?: string | null; storageProvider?: string | null },
+    expiresInSeconds = 300,
+  ): Promise<string> {
+    if (!dl.storageKey) {
+      throw new BadRequestException('Package version has no object storage key');
+    }
     const provider = this.storageService.getProviderInstance(
       (dl.storageProvider as StorageProviderType) || StorageProviderType.LOCAL,
     );

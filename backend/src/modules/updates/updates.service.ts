@@ -56,9 +56,12 @@ export class UpdatesService {
    * recorded on the version at upload time.
    */
   async getPackageSignedUrl(
-    v: { storageKey: string; storageProvider?: string },
+    v: { storageKey?: string | null; storageProvider?: string | null },
     expiresInSeconds = 300,
   ): Promise<string> {
+    if (!v.storageKey) {
+      throw new ForbiddenException('Package version has no object storage key');
+    }
     const provider = this.storageService.getProviderInstance(
       (v.storageProvider as StorageProviderType) || StorageProviderType.LOCAL,
     );
