@@ -218,12 +218,17 @@ export class ActivationsService {
       });
     }
 
-    // Resolve License either by licenseKey or purchaseCode
+    // Resolve License either by licenseKey or purchaseCode.
+    // Sandbox/test licenses are STRICTLY excluded: they exist only for the
+    // vendor's own playground (public/sandbox/*) and must never activate
+    // through the production endpoint — the deterministic TEST-* keys would
+    // otherwise be a free-license backdoor.
     let license: LicenseDocument | null = null;
     if (dto.licenseKey) {
       license = await this.licenseModel.findOne({
         licenseKey: dto.licenseKey.trim().toUpperCase(),
         productId: product._id,
+        isSandbox: { $ne: true },
       }).populate('licensePlanId');
     } else if (dto.purchaseCode) {
       const purchase = await this.purchaseModel.findOne({
@@ -235,7 +240,10 @@ export class ActivationsService {
       });
 
       if (purchase) {
-        license = await this.licenseModel.findOne({ purchaseId: purchase._id }).populate('licensePlanId');
+        license = await this.licenseModel.findOne({
+          purchaseId: purchase._id,
+          isSandbox: { $ne: true },
+        }).populate('licensePlanId');
       }
     }
 
@@ -584,6 +592,17 @@ export class ActivationsService {
         valid: false,
         status: 'TOKEN_INVALID',
         message: 'Activation token is invalid, corrupted, or signature verification failed',
+      };
+    }
+
+    // Sandbox tokens are minted by the sandbox engine for playground testing
+    // only — they must never validate against production endpoints.
+    if (payload.environment === 'sandbox') {
+      await this.logValidation(dto, 'SANDBOX_TOKEN_REJECTED', clientIp, payload.licenseId);
+      return {
+        valid: false,
+        status: 'SANDBOX_TOKEN_REJECTED',
+        message: 'Sandbox activation tokens cannot be used against production licensing endpoints',
       };
     }
 

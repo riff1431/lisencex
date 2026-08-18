@@ -369,6 +369,47 @@ export class PackagesService {
     requestingUserId?: string,
     licenseId?: string,
   ) {
+    // ── License gate ────────────────────────────────────────────────────────
+    // The customer download-token route MUST prove the caller owns a usable
+    // license for THIS product — mirrors UpdatesService.generateCustomerDownloadToken.
+    if (!requestingUserId) {
+      throw new ForbiddenException('Authentication is required to download this package');
+    }
+
+    const product = await this.productModel.findById(productId);
+    if (!product) throw new NotFoundException('Product not found');
+
+    const license = (await this.licenseModel
+      .findOne({
+        userId: new Types.ObjectId(requestingUserId),
+        productId: product._id,
+        status: { $in: [LicenseStatus.ACTIVE, LicenseStatus.EXPIRED] },
+        // Sandbox/test licenses must never unlock real package downloads
+        isSandbox: { $ne: true },
+      })
+      .populate('licensePlanId')) as LicenseDocument | null;
+
+    if (!license) {
+      throw new ForbiddenException(
+        'You do not have an active or valid license for this product',
+      );
+    }
+
+    const settings = this.resolveEffectiveSettings(product, license);
+    const isExpired =
+      license.status === LicenseStatus.EXPIRED ||
+      (license.expiresAt && new Date(license.expiresAt) < new Date());
+    if (isExpired && settings.blockDownloadsOnExpiry !== false) {
+      throw new ForbiddenException(
+        'Package downloads are disabled because the license has expired',
+      );
+    }
+    if (!settings.downloadsEnabled) {
+      throw new ForbiddenException(
+        'Package downloads are disabled for this license plan',
+      );
+    }
+
     const version = await this.versionModel.findOne({
       _id:       new Types.ObjectId(versionId),
       productId: new Types.ObjectId(productId),
@@ -385,7 +426,7 @@ export class PackagesService {
       productId,
       versionId: versionId,
       version:   version.version,
-      licenseId,
+      licenseId: licenseId || license._id.toString(),
       userId:    requestingUserId,
       exp:       Math.floor(Date.now() / 1000) + 900, // 15 minutes
     };
@@ -396,6 +437,34 @@ export class PackagesService {
       downloadUrl: `/api/v1/packages/download/${token}`,
       expiresInSeconds: 900,
       version: version.version,
+    };
+  }
+
+  /**
+   * Same precedence chain as UpdatesService/ActivationsService:
+   * product overrides → license plan → product defaults.
+   */
+  private resolveEffectiveSettings(product: any, license?: any) {
+    const resolvedPlan = license?.licensePlanId as any;
+    const overrides = product?.licenseSettingsOverrides || {};
+    const productSettings = product?.licenseSettings || {};
+
+    const resolveField = (key: string, defaultValue: any) => {
+      if (overrides[key] !== undefined && overrides[key] !== null) {
+        return overrides[key];
+      }
+      if (resolvedPlan && resolvedPlan[key] !== undefined && resolvedPlan[key] !== null) {
+        return resolvedPlan[key];
+      }
+      if (productSettings[key] !== undefined && productSettings[key] !== null) {
+        return productSettings[key];
+      }
+      return defaultValue;
+    };
+
+    return {
+      downloadsEnabled: resolveField('downloadsEnabled', true),
+      blockDownloadsOnExpiry: resolveField('blockDownloadsOnExpiry', true),
     };
   }
 

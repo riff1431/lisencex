@@ -96,8 +96,21 @@ export class UpdatesService {
 
     const payload = this.tokenService.verifyActivationToken(token);
 
+    // Sandbox tokens are for the vendor playground only — never valid here.
+    if (payload.environment === 'sandbox') {
+      throw new ForbiddenException(
+        'Sandbox activation tokens cannot be used against production update endpoints',
+      );
+    }
+
     const license = await this.licenseModel.findById(payload.licenseId).populate('licensePlanId');
     if (!license) {
+      throw new ForbiddenException('License record not found');
+    }
+
+    // The license must belong to THIS product — otherwise a token for one
+    // product could be replayed to obtain update/download tokens for another.
+    if (license.isSandbox || String((license as any).productId) !== product._id.toString()) {
       throw new ForbiddenException('License record not found');
     }
 

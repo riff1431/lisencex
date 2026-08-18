@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import { ProductsSandboxService } from './products-sandbox.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { ProductClientAuthGuard } from '../../common/guards/product-client-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -88,7 +89,14 @@ export class ProductsSandboxAdminController {
   }
 }
 
+/**
+ * Public sandbox endpoints are restricted to holders of this product's client
+ * credentials (the sandbox `client_test_…/pk_test_…` pair from the admin
+ * sandbox overview). They used to be fully anonymous, which let anyone mint
+ * sandbox activations against arbitrary products.
+ */
 @Controller('public/sandbox/licenses')
+@UseGuards(ProductClientAuthGuard)
 export class PublicSandboxLicensingController {
   constructor(private readonly sandboxService: ProductsSandboxService) {}
 
