@@ -87,29 +87,27 @@ export class StorageService implements OnModuleInit {
    */
   private async repairObjectPublicUrls(): Promise<void> {
     try {
-      const fileRes = await this.fileModel.updateMany(
-        { publicUrl: { $regex: /^https?:\/\// } },
-        [
-          {
-            $set: {
-              publicUrl: { $concat: ['/api/v1/public/storage/serve/', '$fileId'] },
-            },
-          },
-        ],
-      );
-      const mediaRes = await this.mediaModel.updateMany(
-        { publicUrl: { $regex: /^https?:\/\// } },
-        [
-          {
-            $set: {
-              publicUrl: { $concat: ['/api/v1/public/media/', '$fileName'] },
-            },
-          },
-        ],
-      );
-      if (fileRes.modifiedCount || mediaRes.modifiedCount) {
+      const rawUrlFilter = { publicUrl: { $regex: /^https?:\/\// } } as any;
+
+      const files = await this.fileModel.find(rawUrlFilter).select('fileId').lean();
+      for (const f of files) {
+        await this.fileModel.updateOne(
+          { _id: f._id },
+          { $set: { publicUrl: `/api/v1/public/storage/serve/${f.fileId}` } },
+        );
+      }
+
+      const medias = await this.mediaModel.find(rawUrlFilter).select('fileName').lean();
+      for (const m of medias) {
+        await this.mediaModel.updateOne(
+          { _id: m._id },
+          { $set: { publicUrl: `/api/v1/public/media/${m.fileName}` } },
+        );
+      }
+
+      if (files.length || medias.length) {
         this.logger.log(
-          `Repaired ${fileRes.modifiedCount} stored-file and ${mediaRes.modifiedCount} media public URLs to API-proxied paths`,
+          `Repaired ${files.length} stored-file and ${medias.length} media public URLs to API-proxied paths`,
         );
       }
     } catch (err) {
