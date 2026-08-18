@@ -23,6 +23,7 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { UserRole } from '../../common/enums/app.enums';
 import type { Request } from 'express';
+import { Throttle } from '@nestjs/throttler';
 
 @Controller()
 export class LicenseRecoveryController {
@@ -30,6 +31,7 @@ export class LicenseRecoveryController {
 
   // ---------------- CUSTOMER ROUTES ----------------
   @UseGuards(JwtAuthGuard)
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   @Post('customer/licenses/recover')
   @HttpCode(HttpStatus.OK)
   async customerRequestRecovery(
@@ -48,10 +50,14 @@ export class LicenseRecoveryController {
     @Param('id') licenseId: string,
     @CurrentUser('id') userId: string,
   ) {
-    return this.recoveryService.getLicenseRecoveriesForCustomer(licenseId, userId);
+    return this.recoveryService.getLicenseRecoveriesForCustomer(
+      licenseId,
+      userId,
+    );
   }
 
   // ---------------- PUBLIC GUEST ROUTES ----------------
+  @Throttle({ default: { limit: 3, ttl: 60000 } })
   @Post('public/licenses/recover')
   @HttpCode(HttpStatus.OK)
   async guestRequestRecovery(
@@ -90,7 +96,11 @@ export class LicenseRecoveryController {
     @Body() dto: ResolveRecoveryRequestDto,
     @CurrentUser('email') adminEmail: string,
   ) {
-    return this.recoveryService.rejectRecovery(id, dto.rejectionReason || 'Rejected by administrator', adminEmail);
+    return this.recoveryService.rejectRecovery(
+      id,
+      dto.rejectionReason || 'Rejected by administrator',
+      adminEmail,
+    );
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)

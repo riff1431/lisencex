@@ -25,41 +25,33 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { UserRole } from '../../common/enums/app.enums';
 import { ProductClientAuthGuard } from '../../common/guards/product-client-auth.guard';
 import { Scopes } from '../../common/decorators/scopes.decorator';
+import { getClientIp } from '../../common/utils/client-ip.util';
+import { Throttle } from '@nestjs/throttler';
 
 @Controller()
 export class ActivationsController {
   constructor(private readonly activationsService: ActivationsService) {}
 
   // ---------------- PUBLIC / CLIENT SDK ROUTES ----------------
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
   @Post('public/licenses/activate')
   @UseGuards(ProductClientAuthGuard)
   @Scopes('activate')
   @HttpCode(HttpStatus.OK)
-  async activate(
-    @Body() dto: ActivateLicenseDto,
-    @Req() req: any,
-  ) {
-    const ip =
-      (req.headers['x-forwarded-for'] as string)?.split(',')[0] ||
-      req.socket.remoteAddress ||
-      '';
+  async activate(@Body() dto: ActivateLicenseDto, @Req() req: any) {
+    const ip = getClientIp(req);
     const userAgent = req.headers['user-agent'] || '';
 
     return this.activationsService.activate(dto, ip, userAgent);
   }
 
+  @Throttle({ default: { limit: 30, ttl: 60000 } })
   @Post('public/licenses/validate')
   @UseGuards(ProductClientAuthGuard)
   @Scopes('validate')
   @HttpCode(HttpStatus.OK)
-  async validate(
-    @Body() dto: ValidateLicenseDto,
-    @Req() req: any,
-  ) {
-    const ip =
-      (req.headers['x-forwarded-for'] as string)?.split(',')[0] ||
-      req.socket.remoteAddress ||
-      '';
+  async validate(@Body() dto: ValidateLicenseDto, @Req() req: any) {
+    const ip = getClientIp(req);
 
     return this.activationsService.validate(dto, ip);
   }
@@ -68,32 +60,26 @@ export class ActivationsController {
   @UseGuards(ProductClientAuthGuard)
   @Scopes('validate')
   @HttpCode(HttpStatus.OK)
-  async sync(
-    @Body() dto: ValidateLicenseDto,
-    @Req() req: any,
-  ) {
-    const ip =
-      (req.headers['x-forwarded-for'] as string)?.split(',')[0] ||
-      req.socket.remoteAddress ||
-      '';
+  async sync(@Body() dto: ValidateLicenseDto, @Req() req: any) {
+    const ip = getClientIp(req);
 
     return this.activationsService.sync(dto, ip);
   }
 
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
   @Post('public/licenses/deactivate')
   @UseGuards(ProductClientAuthGuard)
   @Scopes('activate')
   @HttpCode(HttpStatus.OK)
-  async deactivatePublic(
-    @Body() dto: DeactivateLicenseDto,
-    @Req() req: any,
-  ) {
-    const ip =
-      (req.headers['x-forwarded-for'] as string)?.split(',')[0] ||
-      req.socket.remoteAddress ||
-      '';
+  async deactivatePublic(@Body() dto: DeactivateLicenseDto, @Req() req: any) {
+    const ip = getClientIp(req);
 
-    return this.activationsService.deactivate(dto, 'client', ip, req.product?._id);
+    return this.activationsService.deactivate(
+      dto,
+      'client',
+      ip,
+      req.product?._id,
+    );
   }
 
   // ---------------- CUSTOMER ROUTES ----------------

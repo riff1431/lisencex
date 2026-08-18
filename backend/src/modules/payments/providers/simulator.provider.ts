@@ -9,7 +9,11 @@ import {
 } from '../interfaces/payment-gateway.interface';
 import { Order } from '../../../database/schemas/order.schema';
 import { PaymentTransaction } from '../../../database/schemas/payment-transaction.schema';
-import { isProduction, safeEqual } from '../../../common/utils/security.util';
+import {
+  isProduction,
+  safeEqual,
+  paymentsSimulationEnabled,
+} from '../../../common/utils/security.util';
 
 @Injectable()
 export class SimulatorGatewayProvider implements IPaymentGateway {
@@ -24,20 +28,35 @@ export class SimulatorGatewayProvider implements IPaymentGateway {
     this.secret = secret || 'licensenest_sim_secret_9a8b7c6d5e4f3a2b1c';
   }
 
-  generateSimulatedToken(transactionId: string, orderNumber: string, amount: number): string {
+  generateSimulatedToken(
+    transactionId: string,
+    orderNumber: string,
+    amount: number,
+  ): string {
     const payload = `${transactionId}:${orderNumber}:${amount}:${Date.now()}`;
-    const hmac = crypto.createHmac('sha256', this.secret).update(payload).digest('hex');
+    const hmac = crypto
+      .createHmac('sha256', this.secret)
+      .update(payload)
+      .digest('hex');
     const encoded = Buffer.from(payload).toString('base64url');
     return `${encoded}.${hmac}`;
   }
 
-  verifySimulatedToken(token: string): { valid: boolean; transactionId?: string; orderNumber?: string; amount?: number } {
+  verifySimulatedToken(token: string): {
+    valid: boolean;
+    transactionId?: string;
+    orderNumber?: string;
+    amount?: number;
+  } {
     try {
       const parts = token.split('.');
       if (parts.length !== 2) return { valid: false };
       const [encoded, signature] = parts;
       const payload = Buffer.from(encoded, 'base64url').toString('utf8');
-      const expectedHmac = crypto.createHmac('sha256', this.secret).update(payload).digest('hex');
+      const expectedHmac = crypto
+        .createHmac('sha256', this.secret)
+        .update(payload)
+        .digest('hex');
 
       if (signature !== expectedHmac) {
         return { valid: false };
@@ -61,11 +80,12 @@ export class SimulatorGatewayProvider implements IPaymentGateway {
     options?: Record<string, any>,
   ): Promise<PaymentSessionResult> {
     // The simulator fulfills orders with no money moving. Its webhook path is
-    // already prod-gated, but the customer completion flow bypasses webhooks
-    // entirely — so the session must never start in production.
-    if (isProduction()) {
+    // already gated, but the customer completion flow bypasses webhooks
+    // entirely — so sessions only start when the operator explicitly enabled
+    // payment simulation (never merely because NODE_ENV is unset).
+    if (!paymentsSimulationEnabled()) {
       throw new BadRequestException(
-        'Simulator payment gateway is disabled in production',
+        'Simulator payment gateway requires PAYMENTS_ALLOW_SIMULATION=1 (dev/test only)',
       );
     }
 
@@ -111,7 +131,8 @@ export class SimulatorGatewayProvider implements IPaymentGateway {
     }
 
     // Simulator webhook verification: requires HMAC-SHA256 signature
-    const eventString = typeof payload === 'string' ? payload : JSON.stringify(payload);
+    const eventString =
+      typeof payload === 'string' ? payload : JSON.stringify(payload);
     const expectedSignature = crypto
       .createHmac('sha256', this.secret)
       .update(eventString)
@@ -119,7 +140,10 @@ export class SimulatorGatewayProvider implements IPaymentGateway {
 
     let isValid = safeEqual(signature, expectedSignature);
     // Dev-only convenience signature for the bundled test suite.
-    if (!isProd && signature === 'simulator_bypass_signature') {
+    if (
+      paymentsSimulationEnabled() &&
+      signature === 'simulator_bypass_signature'
+    ) {
       isValid = true;
     }
 
@@ -139,7 +163,9 @@ export class SimulatorGatewayProvider implements IPaymentGateway {
       eventType,
       orderNumber: event.orderNumber || event.data?.orderNumber,
       transactionId: event.transactionId || event.data?.transactionId,
-      externalTransactionId: event.externalTransactionId || `sim_tx_${crypto.randomBytes(8).toString('hex')}`,
+      externalTransactionId:
+        event.externalTransactionId ||
+        `sim_tx_${crypto.randomBytes(8).toString('hex')}`,
       amount: event.amount || event.data?.amount,
       currency: event.currency || event.data?.currency || 'USD',
       failureReason: event.failureReason || event.data?.failureReason,

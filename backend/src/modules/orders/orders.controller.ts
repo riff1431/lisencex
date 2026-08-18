@@ -9,6 +9,7 @@ import {
   Req,
 } from '@nestjs/common';
 import { OrdersService } from './orders.service';
+import { CreateOrderDto } from './dto/order.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -25,7 +26,7 @@ export class OrdersController {
   @Post('customer/orders')
   async createOrder(
     @CurrentUser('id') userId: string,
-    @Body() body: { items: Array<{ productId: string; licensePlanId?: string; quantity?: number }>; couponCode?: string },
+    @Body() body: CreateOrderDto,
     @Req() req: any,
   ) {
     return this.ordersService.createOrder(userId, body.items, body.couponCode, {

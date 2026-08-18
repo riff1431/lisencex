@@ -9,6 +9,13 @@ async function bootstrap() {
   const logger = new Logger('Bootstrap');
   const app = await NestFactory.create(AppModule);
 
+  // Behind Dokploy/Traefik there is exactly one trusted proxy hop. With
+  // trust proxy off, req.ip is the proxy IP — one client could trip the
+  // global rate limit for EVERYONE, and per-IP throttling of login/license
+  // brute force was a no-op. `1` trusts only that outermost hop, so client
+  // spoofed X-Forwarded-For values appended beyond it are ignored.
+  app.getHttpAdapter().getInstance().set('trust proxy', 1);
+
   // CORS: in production, restrict to CORS_ORIGINS (comma-separated) so only
   // our own frontends can make credentialed cross-origin calls. Development
   // stays permissive for local tooling.
@@ -50,6 +57,8 @@ async function bootstrap() {
 
   const port = process.env.PORT || 5000;
   await app.listen(port);
-  logger.log(`🚀 License Key Management API Server is running on: http://localhost:${port}/api/v1`);
+  logger.log(
+    `🚀 License Key Management API Server is running on: http://localhost:${port}/api/v1`,
+  );
 }
 bootstrap();

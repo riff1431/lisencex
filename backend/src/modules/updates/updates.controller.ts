@@ -16,6 +16,7 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { ProductClientAuthGuard } from '../../common/guards/product-client-auth.guard';
 import { Scopes } from '../../common/decorators/scopes.decorator';
 import { SkipTransform } from '../../common/decorators/skip-transform.decorator';
+import { getClientIp } from '../../common/utils/client-ip.util';
 
 @Controller()
 export class UpdatesController {
@@ -51,10 +52,7 @@ export class UpdatesController {
     @Req() req: any,
     @Res() res: Response,
   ) {
-    const ip =
-      (req.headers['x-forwarded-for'] as string)?.split(',')[0] ||
-      req.socket.remoteAddress ||
-      '';
+    const ip = getClientIp(req);
     const userAgent = req.headers['user-agent'] || '';
 
     const result = await this.updatesService.processDownload(
@@ -73,14 +71,14 @@ export class UpdatesController {
         'X-Package-Version': result.version,
         'X-Package-Checksum': result.fileChecksum || '',
         'Cache-Control': 'no-store, no-cache, must-revalidate',
-        'Pragma': 'no-cache',
+        Pragma: 'no-cache',
       });
       const stream = createReadStream(result.storagePath);
       return stream.pipe(res);
     }
 
     if (result.packageUrl) {
-      return res.redirect(result.packageUrl as string);
+      return res.redirect(result.packageUrl);
     }
 
     return res.status(404).json({ message: 'Package file not found' });

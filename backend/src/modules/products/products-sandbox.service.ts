@@ -1,14 +1,33 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { ConfigService } from '@nestjs/config';
 import * as crypto from 'crypto';
-import { Product, ProductDocument } from '../../database/schemas/product.schema';
-import { License, LicenseDocument } from '../../database/schemas/license.schema';
-import { Activation, ActivationDocument } from '../../database/schemas/activation.schema';
-import { ProductCredential, ProductCredentialDocument } from '../../database/schemas/product-credential.schema';
+import {
+  Product,
+  ProductDocument,
+} from '../../database/schemas/product.schema';
+import {
+  License,
+  LicenseDocument,
+} from '../../database/schemas/license.schema';
+import {
+  Activation,
+  ActivationDocument,
+} from '../../database/schemas/activation.schema';
+import {
+  ProductCredential,
+  ProductCredentialDocument,
+} from '../../database/schemas/product-credential.schema';
 import { User, UserDocument } from '../../database/schemas/user.schema';
-import { AuditLog, AuditLogDocument } from '../../database/schemas/audit-log.schema';
+import {
+  AuditLog,
+  AuditLogDocument,
+} from '../../database/schemas/audit-log.schema';
 import { TokenService } from '../token/token.service';
 import {
   LicenseStatus,
@@ -19,19 +38,15 @@ import {
 } from '../../common/enums/app.enums';
 
 export type SandboxScenarioType =
-  | 'valid'
-  | 'expired'
-  | 'revoked'
-  | 'suspended'
-  | 'limit1'
-  | 'envato';
+  'valid' | 'expired' | 'revoked' | 'suspended' | 'limit1' | 'envato';
 
 @Injectable()
 export class ProductsSandboxService {
   constructor(
     @InjectModel(Product.name) private productModel: Model<ProductDocument>,
     @InjectModel(License.name) private licenseModel: Model<LicenseDocument>,
-    @InjectModel(Activation.name) private activationModel: Model<ActivationDocument>,
+    @InjectModel(Activation.name)
+    private activationModel: Model<ActivationDocument>,
     @InjectModel(ProductCredential.name)
     private credentialModel: Model<ProductCredentialDocument>,
     @InjectModel(User.name) private userModel: Model<UserDocument>,
@@ -106,7 +121,9 @@ export class ProductsSandboxService {
 
     const pubKey = `pk_test_verify_${crypto
       .createHash('sha256')
-      .update(`licensenest_sandbox_pub_${product._id.toString()}_${product.slug}`)
+      .update(
+        `licensenest_sandbox_pub_${product._id.toString()}_${product.slug}`,
+      )
       .digest('hex')
       .slice(0, 32)}`;
 
@@ -127,8 +144,6 @@ export class ProductsSandboxService {
         activateUrl: `${apiBase}/public/sandbox/licenses/activate`,
         validateUrl: `${apiBase}/public/sandbox/licenses/validate`,
         deactivateUrl: `${apiBase}/public/sandbox/licenses/deactivate`,
-        updateCheckUrl: `${apiBase}/public/sandbox/products/${product.slug}/updates`,
-        downloadUrl: `${apiBase}/public/sandbox/products/${product.slug}/download`,
       },
       scenarios,
       stats: {
@@ -151,7 +166,7 @@ export class ProductsSandboxService {
    * Generates or retrieves standard test scenario licenses for sandbox testing
    */
   async ensureScenarioLicenses(product: any) {
-    let user = await this.userModel.findOne();
+    const user = await this.userModel.findOne();
     const userId = user ? user._id : new Types.ObjectId();
     const prodSuffix = product._id.toString().slice(-6).toUpperCase();
 
@@ -163,7 +178,8 @@ export class ProductsSandboxService {
         status: LicenseStatus.ACTIVE,
         activationLimit: 5,
         expiresAt: new Date(Date.now() + 365 * 24 * 3600 * 1000),
-        description: 'Simulates normal customer license with 5 available domain activations.',
+        description:
+          'Simulates normal customer license with 5 available domain activations.',
       },
       {
         type: 'expired' as SandboxScenarioType,
@@ -172,7 +188,8 @@ export class ProductsSandboxService {
         status: LicenseStatus.EXPIRED,
         activationLimit: 1,
         expiresAt: new Date(Date.now() - 30 * 24 * 3600 * 1000),
-        description: 'Simulates an expired license/subscription where renewal is required.',
+        description:
+          'Simulates an expired license/subscription where renewal is required.',
       },
       {
         type: 'revoked' as SandboxScenarioType,
@@ -181,7 +198,8 @@ export class ProductsSandboxService {
         status: LicenseStatus.REVOKED,
         activationLimit: 1,
         expiresAt: undefined,
-        description: 'Simulates a permanently revoked license due to chargeback or fraud.',
+        description:
+          'Simulates a permanently revoked license due to chargeback or fraud.',
       },
       {
         type: 'suspended' as SandboxScenarioType,
@@ -199,7 +217,8 @@ export class ProductsSandboxService {
         status: LicenseStatus.ACTIVE,
         activationLimit: 1,
         expiresAt: new Date(Date.now() + 365 * 24 * 3600 * 1000),
-        description: 'Simulates a 1-domain quota to test limit-exceeded rejection.',
+        description:
+          'Simulates a 1-domain quota to test limit-exceeded rejection.',
       },
       {
         type: 'envato' as SandboxScenarioType,
@@ -209,7 +228,8 @@ export class ProductsSandboxService {
         activationLimit: 1,
         source: MarketplaceProviderType.ENVATO,
         expiresAt: undefined,
-        description: 'Simulates an Envato CodeCanyon/ThemeForest item purchase code import.',
+        description:
+          'Simulates an Envato CodeCanyon/ThemeForest item purchase code import.',
       },
     ];
 
@@ -232,7 +252,13 @@ export class ProductsSandboxService {
           expiresAt: sc.expiresAt,
           source: sc.source || MarketplaceProviderType.INTERNAL,
           isSandbox: true,
-          notes: [{ note: `Auto-generated sandbox scenario: ${sc.title}`, author: 'Sandbox Engine', createdAt: new Date() }],
+          notes: [
+            {
+              note: `Auto-generated sandbox scenario: ${sc.title}`,
+              author: 'Sandbox Engine',
+              createdAt: new Date(),
+            },
+          ],
         });
       }
 
@@ -312,7 +338,9 @@ export class ProductsSandboxService {
 
     const product = await this.productModel.findOne({ slug: dto.productSlug });
     if (!product) {
-      throw new NotFoundException(`Product with slug "${dto.productSlug}" not found`);
+      throw new NotFoundException(
+        `Product with slug "${dto.productSlug}" not found`,
+      );
     }
 
     // STRICT ISOLATION: Only look up sandbox licenses
@@ -326,7 +354,8 @@ export class ProductsSandboxService {
       throw new BadRequestException({
         valid: false,
         code: 'INVALID_LICENSE_KEY',
-        message: 'Invalid sandbox license key or purchase code. Ensure you are using a sandbox key (e.g. TEST-VALID-...).',
+        message:
+          'Invalid sandbox license key or purchase code. Ensure you are using a sandbox key (e.g. TEST-VALID-...).',
       });
     }
 
@@ -345,7 +374,10 @@ export class ProductsSandboxService {
         message: 'This sandbox license is temporarily suspended.',
       });
     }
-    if (license.status === LicenseStatus.EXPIRED || (license.expiresAt && new Date(license.expiresAt) < new Date())) {
+    if (
+      license.status === LicenseStatus.EXPIRED ||
+      (license.expiresAt && new Date(license.expiresAt) < new Date())
+    ) {
       throw new BadRequestException({
         valid: false,
         code: 'LICENSE_EXPIRED',
@@ -371,7 +403,8 @@ export class ProductsSandboxService {
         });
       }
 
-      const actId = 'ACT-SANDBOX-' + crypto.randomBytes(6).toString('hex').toUpperCase();
+      const actId =
+        'ACT-SANDBOX-' + crypto.randomBytes(6).toString('hex').toUpperCase();
       activation = await this.activationModel.create({
         activationId: actId,
         licenseId: license._id,
@@ -492,7 +525,8 @@ export class ProductsSandboxService {
 
     return {
       success: true,
-      message: 'Sandbox installation deactivated and slot released successfully.',
+      message:
+        'Sandbox installation deactivated and slot released successfully.',
       isSandbox: true,
     };
   }

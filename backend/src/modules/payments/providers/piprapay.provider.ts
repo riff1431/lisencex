@@ -8,8 +8,15 @@ import {
 } from '../interfaces/payment-gateway.interface';
 import { Order } from '../../../database/schemas/order.schema';
 import { PaymentTransaction } from '../../../database/schemas/payment-transaction.schema';
-import { SettingsService, PipraPayConfig } from '../../settings/settings.service';
-import { isProduction, safeEqual } from '../../../common/utils/security.util';
+import {
+  SettingsService,
+  PipraPayConfig,
+} from '../../settings/settings.service';
+import {
+  isProduction,
+  safeEqual,
+  paymentsSimulationEnabled,
+} from '../../../common/utils/security.util';
 
 @Injectable()
 export class PipraPayGatewayProvider implements IPaymentGateway {
@@ -21,14 +28,22 @@ export class PipraPayGatewayProvider implements IPaymentGateway {
   /**
    * Helper to build dynamic full endpoint URL from base and path
    */
-  private resolveUrl(base: string, endpointPath: string, fallbackPath: string): string {
-    const cleanBase = (base || 'https://pay.huipper.com/api').trim().replace(/\/+$/, '');
+  private resolveUrl(
+    base: string,
+    endpointPath: string,
+    fallbackPath: string,
+  ): string {
+    const cleanBase = (base || 'https://pay.huipper.com/api')
+      .trim()
+      .replace(/\/+$/, '');
     const cleanPath = (endpointPath || fallbackPath || '').trim();
 
     if (cleanPath.startsWith('http://') || cleanPath.startsWith('https://')) {
       return cleanPath;
     }
-    const formattedPath = cleanPath.startsWith('/') ? cleanPath : `/${cleanPath}`;
+    const formattedPath = cleanPath.startsWith('/')
+      ? cleanPath
+      : `/${cleanPath}`;
     return `${cleanBase}${formattedPath}`;
   }
 
@@ -38,11 +53,11 @@ export class PipraPayGatewayProvider implements IPaymentGateway {
   private buildHeaders(config: PipraPayConfig): Record<string, string> {
     return {
       'Content-Type': 'application/json',
-      'Accept': 'application/json',
+      Accept: 'application/json',
       'MHS-PIPRAPAY-API-KEY': config.apiKey || '',
       'mh-piprapay-api-key': config.apiKey || '',
       'X-API-KEY': config.apiKey || '',
-      'Authorization': `Bearer ${config.apiKey || ''}`,
+      Authorization: `Bearer ${config.apiKey || ''}`,
       'User-Agent': 'LicenseNest-PipraPay-Dynamic-Gateway/2.0',
     };
   }
@@ -58,18 +73,30 @@ export class PipraPayGatewayProvider implements IPaymentGateway {
     const config = await this.settingsService.getPipraPayConfig(false);
 
     if (!config.enabled) {
-      throw new BadRequestException('PipraPay payment gateway is currently disabled in Admin Settings.');
+      throw new BadRequestException(
+        'PipraPay payment gateway is currently disabled in Admin Settings.',
+      );
     }
 
     const orderCurrency = (order.currency || 'USD').toUpperCase();
-    const returnUrl = options?.successUrl || `${process.env.FRONTEND_URL || 'http://localhost:3000'}/checkout/success`;
-    const cancelUrl = options?.cancelUrl || `${process.env.FRONTEND_URL || 'http://localhost:3000'}/checkout`;
+    const returnUrl =
+      options?.successUrl ||
+      `${process.env.FRONTEND_URL || 'http://localhost:3000'}/checkout/success`;
+    const cancelUrl =
+      options?.cancelUrl ||
+      `${process.env.FRONTEND_URL || 'http://localhost:3000'}/checkout`;
     const webhookUrl = `${process.env.BACKEND_URL || 'http://localhost:5000'}/api/v1/public/payments/webhook/piprapay`;
 
     // Candidate checkout endpoints to try based on merchant settings and documentation
-    const cleanBase = (config.apiUrl || 'https://pay.huipper.com/api').trim().replace(/\/+$/, '');
+    const cleanBase = (config.apiUrl || 'https://pay.huipper.com/api')
+      .trim()
+      .replace(/\/+$/, '');
     const candidateEndpoints: string[] = [
-      this.resolveUrl(config.apiUrl, config.checkoutEndpoint || '/checkout/', '/checkout/'),
+      this.resolveUrl(
+        config.apiUrl,
+        config.checkoutEndpoint || '/checkout/',
+        '/checkout/',
+      ),
       `${cleanBase}/checkout/`,
       `${cleanBase}/checkout/redirect`,
       `${cleanBase}/create-charge`,
@@ -102,7 +129,11 @@ export class PipraPayGatewayProvider implements IPaymentGateway {
     let lastErrorMessage: string = '';
 
     // If real API key is configured, call PipraPay API endpoint
-    if (config.apiKey && !config.apiKey.startsWith('mock_') && !config.apiKey.startsWith('pipra_test_')) {
+    if (
+      config.apiKey &&
+      !config.apiKey.startsWith('mock_') &&
+      !config.apiKey.startsWith('pipra_test_')
+    ) {
       for (const endpoint of candidateEndpoints) {
         try {
           const controller = new AbortController();
@@ -121,7 +152,9 @@ export class PipraPayGatewayProvider implements IPaymentGateway {
 
           if (response.ok) {
             const resData = await response.json();
-            this.logger.log(`PipraPay checkout response from ${endpoint}: ${JSON.stringify(resData)}`);
+            this.logger.log(
+              `PipraPay checkout response from ${endpoint}: ${JSON.stringify(resData)}`,
+            );
 
             const targetUrl =
               resData.pp_url ||
@@ -160,14 +193,21 @@ export class PipraPayGatewayProvider implements IPaymentGateway {
         } catch (fetchErr: any) {
           if (fetchErr instanceof BadRequestException) throw fetchErr;
           lastErrorMessage = fetchErr.message;
-          this.logger.warn(`Fetch error for PipraPay endpoint ${endpoint}: ${fetchErr.message}`);
+          this.logger.warn(
+            `Fetch error for PipraPay endpoint ${endpoint}: ${fetchErr.message}`,
+          );
         }
       }
     }
 
     // If sandbox / test mode without live key, provide seamless sandbox redirection
     if (!resolvedCheckoutUrl) {
-      if (config.sandboxMode || !config.apiKey || config.apiKey.startsWith('mock_') || config.apiKey.startsWith('pipra_test_')) {
+      if (
+        config.sandboxMode ||
+        !config.apiKey ||
+        config.apiKey.startsWith('mock_') ||
+        config.apiKey.startsWith('pipra_test_')
+      ) {
         const testSessionId = `pp_test_${crypto.randomBytes(8).toString('hex')}`;
         resolvedCheckoutUrl = `${returnUrl}?orderNumber=${encodeURIComponent(order.orderNumber)}&transactionId=${encodeURIComponent(transaction.transactionId)}&gateway=piprapay&mode=sandbox&status=completed`;
         externalPaymentId = testSessionId;
@@ -204,13 +244,24 @@ export class PipraPayGatewayProvider implements IPaymentGateway {
     paymentId: string,
     config: PipraPayConfig,
   ): Promise<{ isValid: boolean; data?: any; error?: string }> {
-    if (!paymentId || !config.apiKey || config.apiKey.startsWith('mock_') || config.apiKey.startsWith('pipra_test_')) {
+    if (
+      !paymentId ||
+      !config.apiKey ||
+      config.apiKey.startsWith('mock_') ||
+      config.apiKey.startsWith('pipra_test_')
+    ) {
       return { isValid: true };
     }
 
-    const cleanBase = (config.apiUrl || 'https://pay.huipper.com/api').trim().replace(/\/+$/, '');
+    const cleanBase = (config.apiUrl || 'https://pay.huipper.com/api')
+      .trim()
+      .replace(/\/+$/, '');
     const candidateEndpoints = [
-      this.resolveUrl(config.apiUrl, config.verifyEndpoint || '/verify-pay', '/verify-pay'),
+      this.resolveUrl(
+        config.apiUrl,
+        config.verifyEndpoint || '/verify-pay',
+        '/verify-pay',
+      ),
       `${cleanBase}/verify-pay`,
       `${cleanBase}/verify-payment`,
       `${cleanBase}/verify-payments`,
@@ -233,7 +284,9 @@ export class PipraPayGatewayProvider implements IPaymentGateway {
         if (response.ok) {
           const resData = await response.json();
           const dataObj = resData.data || resData;
-          const status = (dataObj.status || resData.status || '').toString().toLowerCase();
+          const status = (dataObj.status || resData.status || '')
+            .toString()
+            .toLowerCase();
 
           const isSuccess =
             status === 'completed' ||
@@ -245,7 +298,9 @@ export class PipraPayGatewayProvider implements IPaymentGateway {
           return { isValid: isSuccess, data: dataObj };
         }
       } catch (err: any) {
-        this.logger.warn(`PipraPay verify probe to ${endpoint} failed: ${err.message}`);
+        this.logger.warn(
+          `PipraPay verify probe to ${endpoint} failed: ${err.message}`,
+        );
       }
     }
 
@@ -261,8 +316,10 @@ export class PipraPayGatewayProvider implements IPaymentGateway {
     headers?: Record<string, string>,
   ): Promise<WebhookVerificationResult> {
     const config = await this.settingsService.getPipraPayConfig(false);
-    const rawPayload = typeof payload === 'string' ? payload : JSON.stringify(payload);
-    const secretKey = config.webhookSecret || config.apiKey || 'piprapay_secret_fallback';
+    const rawPayload =
+      typeof payload === 'string' ? payload : JSON.stringify(payload);
+    const secretKey =
+      config.webhookSecret || config.apiKey || 'piprapay_secret_fallback';
 
     // Extract signature or auth key from headers
     const headerSig =
@@ -280,25 +337,40 @@ export class PipraPayGatewayProvider implements IPaymentGateway {
       '';
 
     let isValid = false;
-    const isProd = isProduction();
 
     // 1. Dev-only bypass/test signatures for the bundled test suite — never in production.
     if (
-      !isProd &&
+      paymentsSimulationEnabled() &&
       (headerSig === 'piprapay_bypass_signature' ||
         headerSig === 'pipra_test_signature' ||
         (config.sandboxMode && headerSig.startsWith('test_sig_')))
     ) {
       isValid = true;
-    } else if (headerSig && secretKey && secretKey !== 'piprapay_secret_fallback') {
+    } else if (
+      headerSig &&
+      secretKey &&
+      secretKey !== 'piprapay_secret_fallback'
+    ) {
       // 2. Cryptographic HMAC validation
-      const computedHex = crypto.createHmac('sha256', secretKey).update(rawPayload).digest('hex');
-      const computedBase64 = crypto.createHmac('sha256', secretKey).update(rawPayload).digest('base64');
-      isValid = safeEqual(headerSig, computedHex) || safeEqual(headerSig, computedBase64);
-    } else if (headerApiKey && config.apiKey && safeEqual(headerApiKey, config.apiKey)) {
+      const computedHex = crypto
+        .createHmac('sha256', secretKey)
+        .update(rawPayload)
+        .digest('hex');
+      const computedBase64 = crypto
+        .createHmac('sha256', secretKey)
+        .update(rawPayload)
+        .digest('base64');
+      isValid =
+        safeEqual(headerSig, computedHex) ||
+        safeEqual(headerSig, computedBase64);
+    } else if (
+      headerApiKey &&
+      config.apiKey &&
+      safeEqual(headerApiKey, config.apiKey)
+    ) {
       // 3. API key validation
       isValid = true;
-    } else if (!isProd && config.sandboxMode) {
+    } else if (paymentsSimulationEnabled() && config.sandboxMode) {
       // Sandbox auto-accept only outside production.
       isValid = true;
     }
@@ -307,7 +379,8 @@ export class PipraPayGatewayProvider implements IPaymentGateway {
       return {
         isValid: false,
         eventType: 'unknown',
-        failureReason: 'Invalid PipraPay webhook signature or unauthorized API key',
+        failureReason:
+          'Invalid PipraPay webhook signature or unauthorized API key',
       };
     }
 
@@ -334,7 +407,9 @@ export class PipraPayGatewayProvider implements IPaymentGateway {
       event.payment_status ||
       dataObj.status ||
       ''
-    ).toString().toLowerCase();
+    )
+      .toString()
+      .toLowerCase();
 
     let eventType: any = 'unknown';
 
@@ -388,12 +463,16 @@ export class PipraPayGatewayProvider implements IPaymentGateway {
       typeof dataObj.amount === 'number'
         ? dataObj.amount
         : dataObj.amount
-        ? parseFloat(dataObj.amount)
-        : dataObj.total
-        ? parseFloat(dataObj.total)
-        : undefined;
+          ? parseFloat(dataObj.amount)
+          : dataObj.total
+            ? parseFloat(dataObj.total)
+            : undefined;
 
-    const currency = (dataObj.currency || parsedMetadata.currency || 'USD').toUpperCase();
+    const currency = (
+      dataObj.currency ||
+      parsedMetadata.currency ||
+      'USD'
+    ).toUpperCase();
 
     return {
       isValid: true,
@@ -407,10 +486,20 @@ export class PipraPayGatewayProvider implements IPaymentGateway {
       failureCode: dataObj.failure_code || dataObj.error_code,
       paymentMethodDetails: {
         gateway: 'piprapay',
-        method: dataObj.payment_method || dataObj.gateway || dataObj.channel || 'PipraPay Wallet/Card',
+        method:
+          dataObj.payment_method ||
+          dataObj.gateway ||
+          dataObj.channel ||
+          'PipraPay Wallet/Card',
         brand: dataObj.card_type || dataObj.gateway || 'PipraPay',
-        senderNumber: dataObj.sender_number || dataObj.sender || dataObj.customer_email_mobile,
-        transactionRef: dataObj.bank_trx_id || dataObj.transaction_id || externalTransactionId,
+        senderNumber:
+          dataObj.sender_number ||
+          dataObj.sender ||
+          dataObj.customer_email_mobile,
+        transactionRef:
+          dataObj.bank_trx_id ||
+          dataObj.transaction_id ||
+          externalTransactionId,
       },
       rawEvent: event,
       metadata: { ...parsedMetadata, ...dataObj.metadata },
@@ -428,10 +517,20 @@ export class PipraPayGatewayProvider implements IPaymentGateway {
     const config = await this.settingsService.getPipraPayConfig(false);
     const refundId = `pp_ref_${crypto.randomBytes(8).toString('hex')}`;
 
-    if (!config.sandboxMode && config.apiKey && !config.apiKey.startsWith('mock_')) {
-      const cleanBase = (config.apiUrl || 'https://pay.huipper.com/api').trim().replace(/\/+$/, '');
+    if (
+      !config.sandboxMode &&
+      config.apiKey &&
+      !config.apiKey.startsWith('mock_')
+    ) {
+      const cleanBase = (config.apiUrl || 'https://pay.huipper.com/api')
+        .trim()
+        .replace(/\/+$/, '');
       const refundEndpoints = [
-        this.resolveUrl(config.apiUrl, config.refundEndpoint || '/refund-pa', '/refund-pa'),
+        this.resolveUrl(
+          config.apiUrl,
+          config.refundEndpoint || '/refund-pa',
+          '/refund-pa',
+        ),
         `${cleanBase}/refund-pa`,
         `${cleanBase}/refund-payment`,
       ].filter((v, i, a) => a.indexOf(v) === i);
@@ -442,8 +541,10 @@ export class PipraPayGatewayProvider implements IPaymentGateway {
             method: 'POST',
             headers: this.buildHeaders(config),
             body: JSON.stringify({
-              pp_id: transaction.externalTransactionId || transaction.transactionId,
-              payment_id: transaction.externalTransactionId || transaction.transactionId,
+              pp_id:
+                transaction.externalTransactionId || transaction.transactionId,
+              payment_id:
+                transaction.externalTransactionId || transaction.transactionId,
               amount: amount.toString(),
               currency: transaction.currency || 'USD',
               reason,
@@ -455,7 +556,8 @@ export class PipraPayGatewayProvider implements IPaymentGateway {
             return {
               success: true,
               refundId: resData.refund_id || refundId,
-              externalRefundId: resData.id || resData.refund_id || resData.pp_id || refundId,
+              externalRefundId:
+                resData.id || resData.refund_id || resData.pp_id || refundId,
               amount,
               currency: transaction.currency || 'USD',
               status: 'succeeded',
@@ -463,7 +565,9 @@ export class PipraPayGatewayProvider implements IPaymentGateway {
             };
           }
         } catch (err: any) {
-          this.logger.warn(`PipraPay refund request to ${endpoint} failed: ${err.message}`);
+          this.logger.warn(
+            `PipraPay refund request to ${endpoint} failed: ${err.message}`,
+          );
         }
       }
     }

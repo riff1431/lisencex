@@ -1,11 +1,4 @@
-import {
-  Controller,
-  Get,
-  Post,
-  Param,
-  Body,
-  UseGuards,
-} from '@nestjs/common';
+import { Controller, Get, Post, Param, Body, UseGuards } from '@nestjs/common';
 import { ProductsSandboxService } from './products-sandbox.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { ProductClientAuthGuard } from '../../common/guards/product-client-auth.guard';
@@ -14,6 +7,7 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { UserRole } from '../../common/enums/app.enums';
 import { IsString, IsOptional } from 'class-validator';
+import { Throttle } from '@nestjs/throttler';
 
 export class SandboxActivateDto {
   @IsOptional()
@@ -100,6 +94,7 @@ export class ProductsSandboxAdminController {
 export class PublicSandboxLicensingController {
   constructor(private readonly sandboxService: ProductsSandboxService) {}
 
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
   @Post('activate')
   async activate(@Body() dto: SandboxActivateDto) {
     return this.sandboxService.processSandboxActivate(dto);

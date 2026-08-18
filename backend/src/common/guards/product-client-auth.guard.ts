@@ -8,9 +8,19 @@ import {
 import { Reflector } from '@nestjs/core';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
-import { ProductCredential, ProductCredentialDocument } from '../../database/schemas/product-credential.schema';
-import { Product, ProductDocument } from '../../database/schemas/product.schema';
-import { AuditLog, AuditLogDocument } from '../../database/schemas/audit-log.schema';
+import {
+  ProductCredential,
+  ProductCredentialDocument,
+} from '../../database/schemas/product-credential.schema';
+import {
+  Product,
+  ProductDocument,
+} from '../../database/schemas/product.schema';
+import {
+  AuditLog,
+  AuditLogDocument,
+} from '../../database/schemas/audit-log.schema';
+import { getClientIp } from '../utils/client-ip.util';
 
 @Injectable()
 export class ProductClientAuthGuard implements CanActivate {
@@ -26,23 +36,30 @@ export class ProductClientAuthGuard implements CanActivate {
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest();
-    const clientId = request.headers['x-client-id'] || request.query?.clientId;
-    const apiKey = request.headers['x-api-key'] || request.query?.apiKey;
+    // Credentials come from headers only. Query strings leak secrets into
+    // proxy/access logs and browser history; every shipped SDK sends headers.
+    const clientId = request.headers['x-client-id'];
+    const apiKey = request.headers['x-api-key'];
 
-    const requiredScopes = this.reflector.getAllAndOverride<string[]>('scopes', [
-      context.getHandler(),
-      context.getClass(),
-    ]);
+    const requiredScopes = this.reflector.getAllAndOverride<string[]>(
+      'scopes',
+      [context.getHandler(), context.getClass()],
+    );
 
-    const ip =
-      request.headers['x-forwarded-for']?.split(',')[0] ||
-      request.socket.remoteAddress ||
-      '';
+    const ip = getClientIp(request);
     const userAgent = request.headers['user-agent'] || '';
 
     if (!clientId || !apiKey) {
-      await this.logFailure('MISSING_CREDENTIALS', clientId || 'unknown', ip, userAgent, 'Client ID or API Key is missing in headers/query');
-      throw new UnauthorizedException('Product client credentials (X-Client-ID and X-API-Key) are required');
+      await this.logFailure(
+        'MISSING_CREDENTIALS',
+        clientId || 'unknown',
+        ip,
+        userAgent,
+        'Client ID or API Key is missing in headers/query',
+      );
+      throw new UnauthorizedException(
+        'Product client credentials (X-Client-ID and X-API-Key headers) are required',
+      );
     }
 
     const credential = await this.credentialModel.findOne({
@@ -51,18 +68,44 @@ export class ProductClientAuthGuard implements CanActivate {
     });
 
     if (!credential) {
-      await this.logFailure('INVALID_CREDENTIALS', clientId, ip, userAgent, 'Invalid Client ID or API Key pair');
+      await this.logFailure(
+        'INVALID_CREDENTIALS',
+        clientId,
+        ip,
+        userAgent,
+        'Invalid Client ID or API Key pair',
+      );
       throw new UnauthorizedException('Invalid product client credentials');
     }
 
     if (credential.status === 'disabled') {
-      await this.logFailure('DISABLED_CREDENTIALS', clientId, ip, userAgent, `The credentials for Client ID ${clientId} are disabled`);
-      throw new ForbiddenException('Product API credentials have been disabled');
+      await this.logFailure(
+        'DISABLED_CREDENTIALS',
+        clientId,
+        ip,
+        userAgent,
+        `The credentials for Client ID ${clientId} are disabled`,
+      );
+      throw new ForbiddenException(
+        'Product API credentials have been disabled',
+      );
     }
 
-    if (credential.status === 'rotated' && credential.expiresAt && new Date(credential.expiresAt) < new Date()) {
-      await this.logFailure('EXPIRED_ROTATED_CREDENTIALS', clientId, ip, userAgent, `The rotated credential has expired for Client ID ${clientId}`);
-      throw new ForbiddenException('Product API credentials have expired (grace period elapsed)');
+    if (
+      credential.status === 'rotated' &&
+      credential.expiresAt &&
+      new Date(credential.expiresAt) < new Date()
+    ) {
+      await this.logFailure(
+        'EXPIRED_ROTATED_CREDENTIALS',
+        clientId,
+        ip,
+        userAgent,
+        `The rotated credential has expired for Client ID ${clientId}`,
+      );
+      throw new ForbiddenException(
+        'Product API credentials have expired (grace period elapsed)',
+      );
     }
 
     // Verify scopes if defined
@@ -84,8 +127,16 @@ export class ProductClientAuthGuard implements CanActivate {
 
     const product = await this.productModel.findById(credential.productId);
     if (!product || product.isArchived) {
-      await this.logFailure('PRODUCT_NOT_FOUND', clientId, ip, userAgent, `Product linked to Client ID ${clientId} not found or archived`);
-      throw new UnauthorizedException('Associated product not found or archived');
+      await this.logFailure(
+        'PRODUCT_NOT_FOUND',
+        clientId,
+        ip,
+        userAgent,
+        `Product linked to Client ID ${clientId} not found or archived`,
+      );
+      throw new UnauthorizedException(
+        'Associated product not found or archived',
+      );
     }
 
     // Attach verified product and credentials to request

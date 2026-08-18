@@ -9,7 +9,10 @@ import {
 } from '../interfaces/payment-gateway.interface';
 import { Order } from '../../../database/schemas/order.schema';
 import { PaymentTransaction } from '../../../database/schemas/payment-transaction.schema';
-import { isProduction } from '../../../common/utils/security.util';
+import {
+  isProduction,
+  paymentsSimulationEnabled,
+} from '../../../common/utils/security.util';
 
 @Injectable()
 export class PayPalGatewayProvider implements IPaymentGateway {
@@ -123,7 +126,8 @@ export class PayPalGatewayProvider implements IPaymentGateway {
         return {
           isValid: false,
           eventType: 'unknown',
-          failureReason: 'Could not authenticate with PayPal to verify the webhook',
+          failureReason:
+            'Could not authenticate with PayPal to verify the webhook',
         };
       }
 
@@ -174,7 +178,9 @@ export class PayPalGatewayProvider implements IPaymentGateway {
     } else {
       // Development/test-suite behavior: presence of PayPal transmission headers.
       const transmissionId = headers?.['paypal-transmission-id'];
-      const isValid = !!(transmissionId || signature === 'paypal_bypass_signature');
+      const isValid =
+        paymentsSimulationEnabled() &&
+        !!(transmissionId || signature === 'paypal_bypass_signature');
 
       if (!isValid) {
         return {
@@ -186,7 +192,10 @@ export class PayPalGatewayProvider implements IPaymentGateway {
     }
 
     let eventType: any = 'unknown';
-    if (event.event_type === 'PAYMENT.CAPTURE.COMPLETED' || event.event_type === 'CHECKOUT.ORDER.APPROVED') {
+    if (
+      event.event_type === 'PAYMENT.CAPTURE.COMPLETED' ||
+      event.event_type === 'CHECKOUT.ORDER.APPROVED'
+    ) {
       eventType = 'payment.success';
     } else if (event.event_type === 'PAYMENT.CAPTURE.DENIED') {
       eventType = 'payment.failed';
@@ -203,7 +212,9 @@ export class PayPalGatewayProvider implements IPaymentGateway {
       orderNumber: customId,
       transactionId: resource.supplementary_data?.related_ids?.transaction_id,
       externalTransactionId: resource.id,
-      amount: resource.amount?.value ? parseFloat(resource.amount.value) : undefined,
+      amount: resource.amount?.value
+        ? parseFloat(resource.amount.value)
+        : undefined,
       currency: resource.amount?.currency_code || 'USD',
       failureReason: resource.status_details?.reason,
       paymentMethodDetails: {

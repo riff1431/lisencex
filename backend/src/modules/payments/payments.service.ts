@@ -58,7 +58,7 @@ import {
   NotificationType,
   NotificationSeverity,
 } from '../../common/enums/app.enums';
-import { isProduction } from '../../common/utils/security.util';
+import { paymentsSimulationEnabled } from '../../common/utils/security.util';
 
 @Injectable()
 export class PaymentsService {
@@ -69,8 +69,10 @@ export class PaymentsService {
     private transactionModel: Model<PaymentTransactionDocument>,
     @InjectModel(Order.name) private orderModel: Model<OrderDocument>,
     @InjectModel(License.name) private licenseModel: Model<LicenseDocument>,
-    @InjectModel(Activation.name) private activationModel: Model<ActivationDocument>,
-    @InjectModel(ActivationToken.name) private tokenModel: Model<ActivationTokenDocument>,
+    @InjectModel(Activation.name)
+    private activationModel: Model<ActivationDocument>,
+    @InjectModel(ActivationToken.name)
+    private tokenModel: Model<ActivationTokenDocument>,
     @InjectModel(AuditLog.name) private auditLogModel: Model<AuditLogDocument>,
     @InjectModel(User.name) private userModel: Model<UserDocument>,
     private ordersService: OrdersService,
@@ -85,6 +87,43 @@ export class PaymentsService {
     const ts = Date.now().toString(36).toUpperCase();
     const rand = crypto.randomBytes(4).toString('hex').toUpperCase();
     return `TXN-${ts}-${rand}`;
+  }
+
+  /**
+   * Compare what the gateway reports as paid against what the order costs.
+   * Returns null when consistent, otherwise a human-readable mismatch reason.
+   * Providers that do not surface an amount/currency are treated as unknown
+   * (not enforced) — enforcement only happens on known values.
+   */
+  private verifyPaymentAmounts(
+    order: OrderDocument | null,
+    verification: { amount?: any; currency?: any },
+  ): string | null {
+    if (!order) return null;
+
+    const expected = Number(order.total);
+    if (verification.amount !== undefined && verification.amount !== null) {
+      const reported = Number(verification.amount);
+      if (!Number.isFinite(reported)) {
+        return `gateway reported a non-numeric amount (${verification.amount})`;
+      }
+      // Small epsilon absorbs float rounding in gateway amount serialization
+      if (reported + 0.009 < expected) {
+        return `underpayment: order expects at least ${expected} ${order.currency || 'USD'}, gateway reported ${reported}`;
+      }
+    }
+
+    const reportedCurrency = String(verification.currency || '')
+      .trim()
+      .toUpperCase();
+    const expectedCurrency = String(order.currency || 'USD')
+      .trim()
+      .toUpperCase();
+    if (reportedCurrency && reportedCurrency !== expectedCurrency) {
+      return `currency mismatch: order expects ${expectedCurrency}, gateway reported ${reportedCurrency}`;
+    }
+
+    return null;
   }
 
   /**
@@ -104,12 +143,20 @@ export class PaymentsService {
       throw new ForbiddenException('You do not own this order');
     }
 
-    if (order.status === OrderStatus.COMPLETED && order.paymentStatus === PaymentStatus.PAID) {
+    if (
+      order.status === OrderStatus.COMPLETED &&
+      order.paymentStatus === PaymentStatus.PAID
+    ) {
       throw new BadRequestException('Order is already paid and completed');
     }
 
-    if (order.status === OrderStatus.CANCELLED || order.status === OrderStatus.REFUNDED) {
-      throw new BadRequestException(`Cannot initiate checkout for ${order.status} order`);
+    if (
+      order.status === OrderStatus.CANCELLED ||
+      order.status === OrderStatus.REFUNDED
+    ) {
+      throw new BadRequestException(
+        `Cannot initiate checkout for ${order.status} order`,
+      );
     }
 
     const gateway = this.gatewayRegistry.getProvider(dto.gateway);
@@ -177,16 +224,21 @@ export class PaymentsService {
     userAgent?: string,
   ) {
     // Defense in depth: the provider also refuses to start simulator
-    // sessions in production, so no valid simulated token can exist there.
-    if (isProduction()) {
+    // sessions, so no valid simulated token can exist unless simulation was
+    // explicitly enabled by the operator.
+    if (!paymentsSimulationEnabled()) {
       throw new BadRequestException(
-        'Simulator payment gateway is disabled in production',
+        'Simulator payment gateway requires PAYMENTS_ALLOW_SIMULATION=1 (dev/test only)',
       );
     }
 
-    const tokenResult = this.simulatorProvider.verifySimulatedToken(dto.simulatedToken);
+    const tokenResult = this.simulatorProvider.verifySimulatedToken(
+      dto.simulatedToken,
+    );
     if (!tokenResult.valid || tokenResult.transactionId !== dto.transactionId) {
-      throw new BadRequestException('Invalid or forged simulator payment token');
+      throw new BadRequestException(
+        'Invalid or forged simulator payment token',
+      );
     }
 
     const transaction = await this.transactionModel.findOne({
@@ -272,27 +324,44 @@ export class PaymentsService {
     userAgent?: string,
   ) {
     const gateway = this.gatewayRegistry.getProvider(gatewayName);
-    const verification = await gateway.verifyWebhook(payload, signature, headers);
+    const verification = await gateway.verifyWebhook(
+      payload,
+      signature,
+      headers,
+    );
 
     if (!verification.isValid) {
-      this.logger.warn(`Webhook signature verification failed for ${gatewayName}`);
-      throw new BadRequestException(verification.failureReason || 'Webhook signature verification failed');
+      this.logger.warn(
+        `Webhook signature verification failed for ${gatewayName}`,
+      );
+      throw new BadRequestException(
+        verification.failureReason || 'Webhook signature verification failed',
+      );
     }
 
-    const eventId = headers['webhook-id'] || headers['x-request-id'] || `evt_${crypto.randomBytes(8).toString('hex')}`;
+    const eventId =
+      headers['webhook-id'] ||
+      headers['x-request-id'] ||
+      `evt_${crypto.randomBytes(8).toString('hex')}`;
 
     // Find transaction
     let transaction: PaymentTransactionDocument | null = null;
     if (verification.transactionId) {
-      transaction = await this.transactionModel.findOne({ transactionId: verification.transactionId });
+      transaction = await this.transactionModel.findOne({
+        transactionId: verification.transactionId,
+      });
     }
     if (!transaction && verification.orderNumber) {
-      transaction = await this.transactionModel.findOne({ orderNumber: verification.orderNumber }).sort({ createdAt: -1 });
+      transaction = await this.transactionModel
+        .findOne({ orderNumber: verification.orderNumber })
+        .sort({ createdAt: -1 });
     }
 
     if (!transaction && verification.orderNumber) {
       // Create transaction if direct webhook without prior session
-      const order = await this.orderModel.findOne({ orderNumber: verification.orderNumber });
+      const order = await this.orderModel.findOne({
+        orderNumber: verification.orderNumber,
+      });
       if (order) {
         transaction = await this.transactionModel.create({
           transactionId: this.generateTransactionId(),
@@ -302,7 +371,7 @@ export class PaymentsService {
           customerEmail: order.customerEmail,
           customerName: order.customerName,
           gateway: gatewayName as any,
-          amount: verification.amount || order.total,
+          amount: verification.amount ?? order.total,
           currency: verification.currency || order.currency || 'USD',
           status: TransactionStatus.PENDING,
           externalTransactionId: verification.externalTransactionId,
@@ -311,34 +380,95 @@ export class PaymentsService {
     }
 
     if (!transaction) {
-      this.logger.warn(`No matching transaction found for webhook event on ${gatewayName}`);
-      return { received: true, handled: false, message: 'Transaction not found' };
+      this.logger.warn(
+        `No matching transaction found for webhook event on ${gatewayName}`,
+      );
+      return {
+        received: true,
+        handled: false,
+        message: 'Transaction not found',
+      };
     }
 
-    // Idempotency: Check if this specific eventId was already processed
-    const alreadyHandledEvent = transaction.webhookEvents?.some((e) => e.eventId === eventId);
-    if (alreadyHandledEvent) {
-      return { received: true, alreadyHandled: true, message: 'Event already processed' };
-    }
-
-    // Record webhook event in transaction
-    transaction.webhookEvents.push({
-      eventId,
-      eventType: verification.eventType,
-      receivedAt: new Date(),
-      status: 'processed',
-      details: {
-        externalTransactionId: verification.externalTransactionId,
-        amount: verification.amount,
+    // Idempotency: atomically claim the eventId. A plain read-then-push check
+    // loses when a gateway retries a webhook concurrently — both requests
+    // would pass the check and double-fulfill. findOneAndUpdate is atomic.
+    transaction = await this.transactionModel.findOneAndUpdate(
+      { _id: transaction._id, 'webhookEvents.eventId': { $ne: eventId } },
+      {
+        $push: {
+          webhookEvents: {
+            eventId,
+            eventType: verification.eventType,
+            receivedAt: new Date(),
+            status: 'received',
+            details: {
+              externalTransactionId: verification.externalTransactionId,
+              amount: verification.amount,
+            },
+          },
+        },
       },
-    });
+      { new: true },
+    );
+    if (!transaction) {
+      return {
+        received: true,
+        alreadyHandled: true,
+        message: 'Event already processed',
+      };
+    }
 
     if (verification.eventType === 'payment.success') {
       if (transaction.status !== TransactionStatus.PAID) {
+        // ── Payment integrity gate ─────────────────────────────────────────
+        // A correctly-signed webhook for a short payment or the wrong
+        // currency must never mark an order paid or issue licenses.
+        const order = await this.orderModel.findById(transaction.orderId);
+        const mismatch = this.verifyPaymentAmounts(order, verification);
+
+        if (mismatch) {
+          transaction.webhookEvents[
+            transaction.webhookEvents.length - 1
+          ].status = 'rejected_amount_mismatch';
+          transaction.failureReason = `Webhook rejected: ${mismatch}`;
+          transaction.failureCode = 'amount_mismatch';
+          await transaction.save();
+
+          this.logger.error(
+            `Webhook amount mismatch on ${transaction.transactionId}: ${mismatch} ` +
+              `(order ${transaction.orderNumber} expects ${order?.total} ${order?.currency || 'USD'}, ` +
+              `gateway reported ${verification.amount} ${verification.currency})`,
+          );
+          await this.auditLogModel
+            .create({
+              actorEmail: 'webhook@payment-processor',
+              action: 'PAYMENT_AMOUNT_MISMATCH',
+              targetType: 'payment',
+              targetId: transaction.transactionId,
+              after: {
+                orderNumber: transaction.orderNumber,
+                expectedAmount: order?.total,
+                expectedCurrency: order?.currency,
+                reportedAmount: verification.amount,
+                reportedCurrency: verification.currency,
+                reason: mismatch,
+              },
+            })
+            .catch(() => {});
+          return {
+            received: true,
+            handled: false,
+            reason: 'amount_mismatch',
+            message: mismatch,
+          };
+        }
+
         transaction.status = TransactionStatus.PAID;
         transaction.paidAt = new Date();
         if (verification.externalTransactionId) {
-          transaction.externalTransactionId = verification.externalTransactionId;
+          transaction.externalTransactionId =
+            verification.externalTransactionId;
         }
         if (verification.paymentMethodDetails) {
           transaction.paymentMethodDetails = verification.paymentMethodDetails;
@@ -361,13 +491,17 @@ export class PaymentsService {
             NotificationType.ORDER_PAID,
             'Payment Confirmed',
             `Your payment of $${transaction.amount} for order ${transaction.orderNumber} was confirmed. Your licenses are now active.`,
-            { transactionId: transaction.transactionId, orderNumber: transaction.orderNumber },
+            {
+              transactionId: transaction.transactionId,
+              orderNumber: transaction.orderNumber,
+            },
           );
         }
       }
     } else if (verification.eventType === 'payment.failed') {
       transaction.status = TransactionStatus.FAILED;
-      transaction.failureReason = verification.failureReason || 'Payment failed at gateway';
+      transaction.failureReason =
+        verification.failureReason || 'Payment failed at gateway';
       transaction.failureCode = verification.failureCode || 'gateway_failure';
       await transaction.save();
 
@@ -394,11 +528,17 @@ export class PaymentsService {
       throw new NotFoundException('Transaction not found');
     }
 
-    if (transaction.status !== TransactionStatus.PAID && transaction.status !== TransactionStatus.PARTIALLY_REFUNDED) {
-      throw new BadRequestException(`Cannot refund a transaction in ${transaction.status} status`);
+    if (
+      transaction.status !== TransactionStatus.PAID &&
+      transaction.status !== TransactionStatus.PARTIALLY_REFUNDED
+    ) {
+      throw new BadRequestException(
+        `Cannot refund a transaction in ${transaction.status} status`,
+      );
     }
 
-    const totalRefundable = transaction.amount - (transaction.refundedAmount || 0);
+    const totalRefundable =
+      transaction.amount - (transaction.refundedAmount || 0);
     if (dto.amount > totalRefundable) {
       throw new BadRequestException(
         `Refund amount ($${dto.amount}) exceeds remaining refundable balance ($${totalRefundable})`,
@@ -406,18 +546,28 @@ export class PaymentsService {
     }
 
     const gateway = this.gatewayRegistry.getProvider(transaction.gateway);
-    const refundResult = await gateway.processRefund(transaction, dto.amount, dto.reason);
+    const refundResult = await gateway.processRefund(
+      transaction,
+      dto.amount,
+      dto.reason,
+    );
 
     if (!refundResult.success) {
-      throw new BadRequestException(refundResult.failureReason || 'Gateway rejected refund');
+      throw new BadRequestException(
+        refundResult.failureReason || 'Gateway rejected refund',
+      );
     }
 
-    const refundRecordId = refundResult.refundId || `REF-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
+    const refundRecordId =
+      refundResult.refundId ||
+      `REF-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
     const newRefundedTotal = (transaction.refundedAmount || 0) + dto.amount;
     const isFullRefund = newRefundedTotal >= transaction.amount;
 
     transaction.refundedAmount = newRefundedTotal;
-    transaction.status = isFullRefund ? TransactionStatus.REFUNDED : TransactionStatus.PARTIALLY_REFUNDED;
+    transaction.status = isFullRefund
+      ? TransactionStatus.REFUNDED
+      : TransactionStatus.PARTIALLY_REFUNDED;
 
     transaction.refunds.push({
       refundId: refundRecordId,
@@ -435,12 +585,19 @@ export class PaymentsService {
     const order = await this.orderModel.findById(transaction.orderId);
     if (order) {
       order.refundedAmount = newRefundedTotal;
-      order.status = isFullRefund ? OrderStatus.REFUNDED : OrderStatus.PARTIALLY_REFUNDED;
-      order.paymentStatus = isFullRefund ? PaymentStatus.REFUNDED : PaymentStatus.PARTIALLY_REFUNDED;
+      order.status = isFullRefund
+        ? OrderStatus.REFUNDED
+        : OrderStatus.PARTIALLY_REFUNDED;
+      order.paymentStatus = isFullRefund
+        ? PaymentStatus.REFUNDED
+        : PaymentStatus.PARTIALLY_REFUNDED;
       await order.save();
 
       if (isFullRefund && order.couponId) {
-        await this.couponsService.revertUsage(order.couponId.toString(), order._id.toString());
+        await this.couponsService.revertUsage(
+          order.couponId.toString(),
+          order._id.toString(),
+        );
       }
     }
 
@@ -504,13 +661,18 @@ export class PaymentsService {
         NotificationType.SYSTEM_ALERT,
         'Payment Refund Processed',
         `A refund of $${dto.amount} has been processed for order ${transaction.orderNumber}. Reason: ${dto.reason}`,
-        { transactionId: transaction.transactionId, orderNumber: transaction.orderNumber },
+        {
+          transactionId: transaction.transactionId,
+          orderNumber: transaction.orderNumber,
+        },
       );
     }
 
     return {
       success: true,
-      message: isFullRefund ? 'Full refund processed and licenses revoked' : 'Partial refund processed',
+      message: isFullRefund
+        ? 'Full refund processed and licenses revoked'
+        : 'Partial refund processed',
       refundId: refundRecordId,
       refundedAmount: dto.amount,
       totalRefunded: newRefundedTotal,
@@ -601,7 +763,12 @@ export class PaymentsService {
     }
 
     const [items, total] = await Promise.all([
-      this.transactionModel.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
+      this.transactionModel
+        .find(filter)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
       this.transactionModel.countDocuments(filter),
     ]);
 
@@ -617,9 +784,14 @@ export class PaymentsService {
   }
 
   async getTransactionById(transactionId: string) {
-    const transaction = await this.transactionModel.findOne({
-      $or: [{ transactionId }, { _id: Types.ObjectId.isValid(transactionId) ? transactionId : null }],
-    }).lean();
+    const transaction = await this.transactionModel
+      .findOne({
+        $or: [
+          { transactionId },
+          { _id: Types.ObjectId.isValid(transactionId) ? transactionId : null },
+        ],
+      })
+      .lean();
 
     if (!transaction) {
       throw new NotFoundException('Transaction not found');
@@ -646,12 +818,29 @@ export class PaymentsService {
     ] = await Promise.all([
       this.transactionModel.countDocuments(),
       this.transactionModel.countDocuments({ status: TransactionStatus.PAID }),
-      this.transactionModel.countDocuments({ status: TransactionStatus.FAILED }),
       this.transactionModel.countDocuments({
-        status: { $in: [TransactionStatus.REFUNDED, TransactionStatus.PARTIALLY_REFUNDED] },
+        status: TransactionStatus.FAILED,
+      }),
+      this.transactionModel.countDocuments({
+        status: {
+          $in: [
+            TransactionStatus.REFUNDED,
+            TransactionStatus.PARTIALLY_REFUNDED,
+          ],
+        },
       }),
       this.transactionModel.aggregate([
-        { $match: { status: { $in: [TransactionStatus.PAID, TransactionStatus.REFUNDED, TransactionStatus.PARTIALLY_REFUNDED] } } },
+        {
+          $match: {
+            status: {
+              $in: [
+                TransactionStatus.PAID,
+                TransactionStatus.REFUNDED,
+                TransactionStatus.PARTIALLY_REFUNDED,
+              ],
+            },
+          },
+        },
         { $group: { _id: null, total: { $sum: '$amount' } } },
       ]),
       this.transactionModel.aggregate([
@@ -662,7 +851,10 @@ export class PaymentsService {
     const grossVolume = volumeAgg[0]?.total || 0;
     const totalRefunded = refundAgg[0]?.total || 0;
     const netVolume = Math.max(0, grossVolume - totalRefunded);
-    const successRate = totalTransactions > 0 ? ((paidCount / totalTransactions) * 100).toFixed(1) : '100';
+    const successRate =
+      totalTransactions > 0
+        ? ((paidCount / totalTransactions) * 100).toFixed(1)
+        : '100';
 
     return {
       totalTransactions,

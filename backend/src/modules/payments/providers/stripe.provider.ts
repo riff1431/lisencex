@@ -9,7 +9,11 @@ import {
 } from '../interfaces/payment-gateway.interface';
 import { Order } from '../../../database/schemas/order.schema';
 import { PaymentTransaction } from '../../../database/schemas/payment-transaction.schema';
-import { isProduction, safeEqual } from '../../../common/utils/security.util';
+import {
+  isProduction,
+  safeEqual,
+  paymentsSimulationEnabled,
+} from '../../../common/utils/security.util';
 
 @Injectable()
 export class StripeGatewayProvider implements IPaymentGateway {
@@ -22,7 +26,9 @@ export class StripeGatewayProvider implements IPaymentGateway {
 
   constructor(private configService: ConfigService) {
     const secretKey = this.configService.get<string>('STRIPE_SECRET_KEY');
-    const webhookSecret = this.configService.get<string>('STRIPE_WEBHOOK_SECRET');
+    const webhookSecret = this.configService.get<string>(
+      'STRIPE_WEBHOOK_SECRET',
+    );
     this.secretKeyConfigured = !!secretKey;
     this.webhookSecretConfigured = !!webhookSecret;
     // Mock defaults are only usable outside production (see isConfigured).
@@ -70,7 +76,8 @@ export class StripeGatewayProvider implements IPaymentGateway {
     signature: string,
     headers?: Record<string, string>,
   ): Promise<WebhookVerificationResult> {
-    const rawPayload = typeof payload === 'string' ? payload : JSON.stringify(payload);
+    const rawPayload =
+      typeof payload === 'string' ? payload : JSON.stringify(payload);
     const isProd = isProduction();
 
     // Production is fail-closed: no configured webhook secret -> reject everything.
@@ -93,12 +100,15 @@ export class StripeGatewayProvider implements IPaymentGateway {
       if (timestamp && sig) {
         if (isProd) {
           // Replay protection: reject events older/newer than 5 minutes.
-          const age = Math.abs(Math.floor(Date.now() / 1000) - parseInt(timestamp, 10));
+          const age = Math.abs(
+            Math.floor(Date.now() / 1000) - parseInt(timestamp, 10),
+          );
           if (Number.isNaN(age) || age > 300) {
             return {
               isValid: false,
               eventType: 'unknown',
-              failureReason: 'Stripe webhook timestamp outside the 5-minute tolerance window',
+              failureReason:
+                'Stripe webhook timestamp outside the 5-minute tolerance window',
             };
           }
         }
@@ -113,7 +123,10 @@ export class StripeGatewayProvider implements IPaymentGateway {
     }
 
     // Dev-only convenience signature for the bundled test suite — never valid in production.
-    if (!isProd && signature === 'stripe_bypass_signature') {
+    if (
+      paymentsSimulationEnabled() &&
+      signature === 'stripe_bypass_signature'
+    ) {
       isValid = true;
     }
 
@@ -128,7 +141,10 @@ export class StripeGatewayProvider implements IPaymentGateway {
     const event = typeof payload === 'string' ? JSON.parse(payload) : payload;
     let eventType: any = 'unknown';
 
-    if (event.type === 'payment_intent.succeeded' || event.type === 'checkout.session.completed') {
+    if (
+      event.type === 'payment_intent.succeeded' ||
+      event.type === 'checkout.session.completed'
+    ) {
       eventType = 'payment.success';
     } else if (event.type === 'payment_intent.payment_failed') {
       eventType = 'payment.failed';
@@ -144,7 +160,11 @@ export class StripeGatewayProvider implements IPaymentGateway {
       orderNumber: dataObj.metadata?.orderNumber,
       transactionId: dataObj.metadata?.transactionId,
       externalTransactionId: dataObj.id,
-      amount: dataObj.amount ? dataObj.amount / 100 : dataObj.amount_total ? dataObj.amount_total / 100 : undefined,
+      amount: dataObj.amount
+        ? dataObj.amount / 100
+        : dataObj.amount_total
+          ? dataObj.amount_total / 100
+          : undefined,
       currency: (dataObj.currency || 'USD').toUpperCase(),
       failureReason: dataObj.last_payment_error?.message,
       failureCode: dataObj.last_payment_error?.code,

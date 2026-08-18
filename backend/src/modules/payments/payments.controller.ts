@@ -26,6 +26,7 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { UserRole } from '../../common/enums/app.enums';
+import { getClientIp } from '../../common/utils/client-ip.util';
 
 @Controller()
 export class PaymentsController {
@@ -52,8 +53,14 @@ export class PaymentsController {
     @Headers() allHeaders: Record<string, string>,
     @Req() req: Request,
   ) {
-    const signature = stripeSig || paypalSig || simSig || pipraSig || (allHeaders['x-signature'] as string) || '';
-    const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0] || req.socket.remoteAddress || '';
+    const signature =
+      stripeSig ||
+      paypalSig ||
+      simSig ||
+      pipraSig ||
+      allHeaders['x-signature'] ||
+      '';
+    const ip = getClientIp(req);
     const userAgent = req.headers['user-agent'] || '';
 
     return this.paymentsService.handleWebhook(
@@ -74,10 +81,13 @@ export class PaymentsController {
     @CurrentUser('id') userId: string,
     @Req() req: Request,
   ) {
-    const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0] || req.socket.remoteAddress || '';
+    const ip = getClientIp(req);
     const userAgent = req.headers['user-agent'] || '';
 
-    return this.paymentsService.initiateCheckout(userId, dto, { ip, userAgent });
+    return this.paymentsService.initiateCheckout(userId, dto, {
+      ip,
+      userAgent,
+    });
   }
 
   @UseGuards(JwtAuthGuard)
@@ -87,10 +97,15 @@ export class PaymentsController {
     @CurrentUser('id') userId: string,
     @Req() req: Request,
   ) {
-    const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0] || req.socket.remoteAddress || '';
+    const ip = getClientIp(req);
     const userAgent = req.headers['user-agent'] || '';
 
-    return this.paymentsService.completeSimulatorPayment(userId, dto, ip, userAgent);
+    return this.paymentsService.completeSimulatorPayment(
+      userId,
+      dto,
+      ip,
+      userAgent,
+    );
   }
 
   // ---------------- ADMIN ROUTES ----------------
@@ -133,6 +148,10 @@ export class PaymentsController {
     @Body() dto: ManualVerifyDto,
     @CurrentUser('email') adminEmail: string,
   ) {
-    return this.paymentsService.manualVerifyPayment(transactionId, dto, adminEmail);
+    return this.paymentsService.manualVerifyPayment(
+      transactionId,
+      dto,
+      adminEmail,
+    );
   }
 }

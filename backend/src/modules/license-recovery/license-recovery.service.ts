@@ -38,10 +38,7 @@ import {
   Purchase,
   PurchaseDocument,
 } from '../../database/schemas/purchase.schema';
-import {
-  User,
-  UserDocument,
-} from '../../database/schemas/user.schema';
+import { User, UserDocument } from '../../database/schemas/user.schema';
 import { TokenService } from '../token/token.service';
 import { ActivationsService } from '../activations/activations.service';
 import { DomainNormalizer } from '../../common/utils/domain-normalizer.util';
@@ -68,10 +65,13 @@ export class LicenseRecoveryService {
     @InjectModel(LicenseRecoveryRequest.name)
     private recoveryModel: Model<LicenseRecoveryRequestDocument>,
     @InjectModel(License.name) private licenseModel: Model<LicenseDocument>,
-    @InjectModel(Activation.name) private activationModel: Model<ActivationDocument>,
+    @InjectModel(Activation.name)
+    private activationModel: Model<ActivationDocument>,
     @InjectModel(Product.name) private productModel: Model<ProductDocument>,
-    @InjectModel(Installation.name) private installationModel: Model<InstallationDocument>,
-    @InjectModel(ActivationToken.name) private tokenModel: Model<ActivationTokenDocument>,
+    @InjectModel(Installation.name)
+    private installationModel: Model<InstallationDocument>,
+    @InjectModel(ActivationToken.name)
+    private tokenModel: Model<ActivationTokenDocument>,
     @InjectModel(AuditLog.name) private auditLogModel: Model<AuditLogDocument>,
     @InjectModel(Purchase.name) private purchaseModel: Model<PurchaseDocument>,
     @InjectModel(User.name) private userModel: Model<UserDocument>,
@@ -85,7 +85,11 @@ export class LicenseRecoveryService {
     if (r.includes('lost') || r.includes('delete') || r.includes('corrupt')) {
       return ActivationStatus.LOST;
     }
-    if (r.includes('move') || r.includes('replace') || r.includes('reinstall')) {
+    if (
+      r.includes('move') ||
+      r.includes('replace') ||
+      r.includes('reinstall')
+    ) {
       return ActivationStatus.REPLACED;
     }
     return ActivationStatus.RECOVERED;
@@ -109,7 +113,9 @@ export class LicenseRecoveryService {
     }
 
     if (license.status !== LicenseStatus.ACTIVE) {
-      throw new BadRequestException(`License is not active (current status: ${license.status})`);
+      throw new BadRequestException(
+        `License is not active (current status: ${license.status})`,
+      );
     }
 
     const oldActivation = await this.activationModel.findOne({
@@ -119,18 +125,29 @@ export class LicenseRecoveryService {
     });
 
     if (!oldActivation) {
-      throw new NotFoundException('Active activation to recover not found on this license');
+      throw new NotFoundException(
+        'Active activation to recover not found on this license',
+      );
     }
 
     const product = await this.productModel.findById(license.productId);
-    const settings = this.activationsService.resolveEffectiveSettings(product, license);
+    const settings = this.activationsService.resolveEffectiveSettings(
+      product,
+      license,
+    );
 
     if (!settings.recoveryEnabled) {
-      throw new ForbiddenException('License recovery is disabled for this product/plan');
+      throw new ForbiddenException(
+        'License recovery is disabled for this product/plan',
+      );
     }
 
     // Cooldown & Limits checks
-    await this.checkLimitsAndCooldown(license._id.toString(), settings.recoveryLimit, settings.recoveryCooldownHours);
+    await this.checkLimitsAndCooldown(
+      license._id.toString(),
+      settings.recoveryLimit,
+      settings.recoveryCooldownHours,
+    );
 
     const requesterEmail = userEmail;
 
@@ -177,24 +194,27 @@ export class LicenseRecoveryService {
       });
 
       // Notify Admins
-      this.notificationsService.notifyAdmins(
-        NotificationType.LICENSE_RECOVERY_REQUESTED,
-        `New Recovery Request: ${product?.name}`,
-        `Customer ${requesterEmail} requested recovery for ${oldActivation.domain} → ${dto.newDomain}.`,
-        {
-          recoveryRequestId: request._id.toString(),
-          licenseId: license._id.toString(),
-          licenseKey: license.licenseKey,
-          oldDomain: oldActivation.domain,
-          newDomain: dto.newDomain,
-        },
-        { severity: NotificationSeverity.INFO },
-      ).catch(() => {});
+      this.notificationsService
+        .notifyAdmins(
+          NotificationType.LICENSE_RECOVERY_REQUESTED,
+          `New Recovery Request: ${product?.name}`,
+          `Customer ${requesterEmail} requested recovery for ${oldActivation.domain} → ${dto.newDomain}.`,
+          {
+            recoveryRequestId: request._id.toString(),
+            licenseId: license._id.toString(),
+            licenseKey: license.licenseKey,
+            oldDomain: oldActivation.domain,
+            newDomain: dto.newDomain,
+          },
+          { severity: NotificationSeverity.INFO },
+        )
+        .catch(() => {});
 
       return {
         success: true,
         status: 'pending',
-        message: 'Recovery request submitted successfully and is pending administrative review.',
+        message:
+          'Recovery request submitted successfully and is pending administrative review.',
       };
     }
   }
@@ -211,7 +231,9 @@ export class LicenseRecoveryService {
     }
 
     if (license.status !== LicenseStatus.ACTIVE) {
-      throw new BadRequestException(`License is not active (current status: ${license.status})`);
+      throw new BadRequestException(
+        `License is not active (current status: ${license.status})`,
+      );
     }
 
     // Verify Ownership
@@ -221,7 +243,11 @@ export class LicenseRecoveryService {
       ownerUser = await this.userModel.findById(license.userId);
     }
 
-    if (dto.verificationEmail && ownerUser && ownerUser.email.toLowerCase() === dto.verificationEmail.toLowerCase()) {
+    if (
+      dto.verificationEmail &&
+      ownerUser &&
+      ownerUser.email.toLowerCase() === dto.verificationEmail.toLowerCase()
+    ) {
       ownershipVerified = true;
     } else if (dto.purchaseCode && license.purchaseId) {
       const purchase = await this.purchaseModel.findById(license.purchaseId);
@@ -247,45 +273,37 @@ export class LicenseRecoveryService {
     });
 
     if (!oldActivation) {
-      throw new NotFoundException(`No active activation found for domain "${dto.oldDomain}" on this license.`);
+      throw new NotFoundException(
+        `No active activation found for domain "${dto.oldDomain}" on this license.`,
+      );
     }
 
     const product = await this.productModel.findById(license.productId);
-    const settings = this.activationsService.resolveEffectiveSettings(product, license);
+    const settings = this.activationsService.resolveEffectiveSettings(
+      product,
+      license,
+    );
 
     if (!settings.recoveryEnabled) {
-      throw new ForbiddenException('License recovery is disabled for this product/plan');
+      throw new ForbiddenException(
+        'License recovery is disabled for this product/plan',
+      );
     }
 
-    await this.checkLimitsAndCooldown(license._id.toString(), settings.recoveryLimit, settings.recoveryCooldownHours);
+    await this.checkLimitsAndCooldown(
+      license._id.toString(),
+      settings.recoveryLimit,
+      settings.recoveryCooldownHours,
+    );
 
-    const requesterEmail = dto.verificationEmail || ownerUser?.email || 'guest@example.com';
+    const requesterEmail =
+      dto.verificationEmail || ownerUser?.email || 'guest@example.com';
 
-    // Guest recoveries always queue as pending for admin verification unless auto-approved is specifically configured
-    // Let's allow auto-approve if owner email matches and cooldown/limits are met
-    if (settings.autoApproveRecovery && dto.verificationEmail) {
-      const result = await this.executeRecoveryTransfer(
-        license,
-        oldActivation,
-        dto.newDomain,
-        dto.newInstallationId,
-        dto.newInstallationUrl,
-        dto.reason,
-        dto.reasonDetail,
-        requesterEmail,
-        'system',
-        clientIp,
-        license.userId?.toString(),
-      );
-
-      return {
-        success: true,
-        status: 'approved',
-        message: 'Recovery approved automatically through owner email verification.',
-        activation: result.activation,
-        token: result.token,
-      };
-    } else {
+    // Guest recoveries ALWAYS queue for admin review. An email address is not
+    // proof of ownership (owner emails are frequently public or guessable),
+    // and an auto-approved transfer hands the attacker a signed activation
+    // token for a domain they control while the victim's site keeps running.
+    {
       const request = await this.recoveryModel.create({
         licenseId: license._id,
         productId: license.productId,
@@ -303,19 +321,21 @@ export class LicenseRecoveryService {
         requestedIp: clientIp,
       });
 
-      this.notificationsService.notifyAdmins(
-        NotificationType.LICENSE_RECOVERY_REQUESTED,
-        `Guest Recovery Request: ${product?.name}`,
-        `Guest ${requesterEmail} requested recovery for ${oldActivation.domain} → ${dto.newDomain}.`,
-        {
-          recoveryRequestId: request._id.toString(),
-          licenseId: license._id.toString(),
-          licenseKey: license.licenseKey,
-          oldDomain: oldActivation.domain,
-          newDomain: dto.newDomain,
-        },
-        { severity: NotificationSeverity.WARNING },
-      ).catch(() => {});
+      this.notificationsService
+        .notifyAdmins(
+          NotificationType.LICENSE_RECOVERY_REQUESTED,
+          `Guest Recovery Request: ${product?.name}`,
+          `Guest ${requesterEmail} requested recovery for ${oldActivation.domain} → ${dto.newDomain}.`,
+          {
+            recoveryRequestId: request._id.toString(),
+            licenseId: license._id.toString(),
+            licenseKey: license.licenseKey,
+            oldDomain: oldActivation.domain,
+            newDomain: dto.newDomain,
+          },
+          { severity: NotificationSeverity.WARNING },
+        )
+        .catch(() => {});
 
       return {
         success: true,
@@ -335,9 +355,13 @@ export class LicenseRecoveryService {
       throw new BadRequestException(`Request is already ${request.status}`);
     }
 
-    const license = await this.licenseModel.findById(request.licenseId).populate('licensePlanId');
+    const license = await this.licenseModel
+      .findById(request.licenseId)
+      .populate('licensePlanId');
     if (!license) {
-      throw new NotFoundException('License associated with this recovery request not found');
+      throw new NotFoundException(
+        'License associated with this recovery request not found',
+      );
     }
 
     const oldActivation = await this.activationModel.findOne({
@@ -346,7 +370,9 @@ export class LicenseRecoveryService {
     });
 
     if (!oldActivation) {
-      throw new BadRequestException('The original activation slot is no longer active (already deactivated, lost, or replaced).');
+      throw new BadRequestException(
+        'The original activation slot is no longer active (already deactivated, lost, or replaced).',
+      );
     }
 
     const result = await this.executeRecoveryTransfer(
@@ -370,19 +396,21 @@ export class LicenseRecoveryService {
 
     // Notify Customer
     if (license.userId) {
-      this.notificationsService.notifyCustomer(
-        license.userId.toString(),
-        NotificationType.LICENSE_RECOVERY_APPROVED,
-        `Recovery Approved: ${request.newDomain}`,
-        `Your license recovery request for ${request.oldDomain} → ${request.newDomain} was approved by support.`,
-        {
-          licenseId: license._id.toString(),
-          productId: license.productId.toString(),
-          recoveryRequestId: request._id.toString(),
-          newDomain: request.newDomain,
-        },
-        { actionUrl: `/dashboard/licenses` },
-      ).catch(() => {});
+      this.notificationsService
+        .notifyCustomer(
+          license.userId.toString(),
+          NotificationType.LICENSE_RECOVERY_APPROVED,
+          `Recovery Approved: ${request.newDomain}`,
+          `Your license recovery request for ${request.oldDomain} → ${request.newDomain} was approved by support.`,
+          {
+            licenseId: license._id.toString(),
+            productId: license.productId.toString(),
+            recoveryRequestId: request._id.toString(),
+            newDomain: request.newDomain,
+          },
+          { actionUrl: `/dashboard/licenses` },
+        )
+        .catch(() => {});
     }
 
     return {
@@ -393,7 +421,11 @@ export class LicenseRecoveryService {
     };
   }
 
-  async rejectRecovery(id: string, rejectionReason: string, adminEmail: string) {
+  async rejectRecovery(
+    id: string,
+    rejectionReason: string,
+    adminEmail: string,
+  ) {
     const request = await this.recoveryModel.findById(id);
     if (!request) {
       throw new NotFoundException('Recovery request not found');
@@ -413,18 +445,20 @@ export class LicenseRecoveryService {
 
     // Notify Customer
     if (license?.userId) {
-      this.notificationsService.notifyCustomer(
-        license.userId.toString(),
-        NotificationType.LICENSE_RECOVERY_REJECTED,
-        `Recovery Rejected`,
-        `Your recovery request for ${request.oldDomain} was rejected. Reason: ${request.rejectionReason}`,
-        {
-          licenseId: license._id.toString(),
-          recoveryRequestId: request._id.toString(),
-          rejectionReason: request.rejectionReason,
-        },
-        { actionUrl: `/dashboard/licenses` },
-      ).catch(() => {});
+      this.notificationsService
+        .notifyCustomer(
+          license.userId.toString(),
+          NotificationType.LICENSE_RECOVERY_REJECTED,
+          `Recovery Rejected`,
+          `Your recovery request for ${request.oldDomain} was rejected. Reason: ${request.rejectionReason}`,
+          {
+            licenseId: license._id.toString(),
+            recoveryRequestId: request._id.toString(),
+            rejectionReason: request.rejectionReason,
+          },
+          { actionUrl: `/dashboard/licenses` },
+        )
+        .catch(() => {});
     }
 
     await this.auditLogModel.create({
@@ -444,8 +478,14 @@ export class LicenseRecoveryService {
     };
   }
 
-  async manualRecovery(dto: ManualRecoveryDto, adminEmail: string, clientIp?: string) {
-    const license = await this.licenseModel.findById(dto.licenseId).populate('licensePlanId');
+  async manualRecovery(
+    dto: ManualRecoveryDto,
+    adminEmail: string,
+    clientIp?: string,
+  ) {
+    const license = await this.licenseModel
+      .findById(dto.licenseId)
+      .populate('licensePlanId');
     if (!license) {
       throw new NotFoundException('License not found');
     }
@@ -457,7 +497,9 @@ export class LicenseRecoveryService {
     });
 
     if (!oldActivation) {
-      throw new BadRequestException('The specified activation is not currently active');
+      throw new BadRequestException(
+        'The specified activation is not currently active',
+      );
     }
 
     const result = await this.executeRecoveryTransfer(
@@ -531,7 +573,12 @@ export class LicenseRecoveryService {
     return this.getLicenseRecoveries(licenseId);
   }
 
-  async findAll(query: { status?: string; search?: string; page?: number; limit?: number }) {
+  async findAll(query: {
+    status?: string;
+    search?: string;
+    page?: number;
+    limit?: number;
+  }) {
     const page = Math.max(1, Number(query.page) || 1);
     const limit = Math.max(1, Number(query.limit) || 20);
     const skip = (page - 1) * limit;
@@ -599,9 +646,12 @@ export class LicenseRecoveryService {
 
     if (lastApproved && cooldownHours > 0) {
       const cooldownMs = cooldownHours * 60 * 60 * 1000;
-      const timeSinceLast = Date.now() - new Date((lastApproved as any).createdAt).getTime();
+      const timeSinceLast =
+        Date.now() - new Date((lastApproved as any).createdAt).getTime();
       if (timeSinceLast < cooldownMs) {
-        const remainingHours = Math.ceil((cooldownMs - timeSinceLast) / (3600 * 1000));
+        const remainingHours = Math.ceil(
+          (cooldownMs - timeSinceLast) / (3600 * 1000),
+        );
         throw new BadRequestException(
           `License recovery cooldown active. Please wait ${remainingHours} hour(s) before attempting another recovery.`,
         );
@@ -623,7 +673,10 @@ export class LicenseRecoveryService {
     userId?: string,
   ) {
     const product = await this.productModel.findById(license.productId);
-    const settings = this.activationsService.resolveEffectiveSettings(product, license);
+    const settings = this.activationsService.resolveEffectiveSettings(
+      product,
+      license,
+    );
 
     const oldStatus = this.mapReasonToStatus(reason || '');
     oldActivation.status = oldStatus;

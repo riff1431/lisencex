@@ -54,7 +54,8 @@ export class OrdersService {
   constructor(
     @InjectModel(Order.name) private orderModel: Model<OrderDocument>,
     @InjectModel(Product.name) private productModel: Model<ProductDocument>,
-    @InjectModel(LicensePlan.name) private planModel: Model<LicensePlanDocument>,
+    @InjectModel(LicensePlan.name)
+    private planModel: Model<LicensePlanDocument>,
     @InjectModel(Purchase.name) private purchaseModel: Model<PurchaseDocument>,
     @InjectModel(License.name) private licenseModel: Model<LicenseDocument>,
     @InjectModel(User.name) private userModel: Model<UserDocument>,
@@ -76,7 +77,11 @@ export class OrdersService {
    */
   async createOrder(
     userId: string,
-    items: Array<{ productId: string; licensePlanId?: string; quantity?: number }>,
+    items: Array<{
+      productId: string;
+      licensePlanId?: string;
+      quantity?: number;
+    }>,
     couponCode?: string,
     options?: { ip?: string; userAgent?: string },
   ) {
@@ -98,7 +103,9 @@ export class OrdersService {
         throw new NotFoundException(`Product ${cartItem.productId} not found`);
       }
       if (product.isArchived) {
-        throw new BadRequestException(`Product "${product.name}" is no longer available`);
+        throw new BadRequestException(
+          `Product "${product.name}" is no longer available`,
+        );
       }
 
       let unitPrice = product.price || 0;
@@ -108,20 +115,29 @@ export class OrdersService {
       if (cartItem.licensePlanId) {
         const plan = await this.planModel.findById(cartItem.licensePlanId);
         if (!plan) {
-          throw new NotFoundException(`License plan ${cartItem.licensePlanId} not found`);
+          throw new NotFoundException(
+            `License plan ${cartItem.licensePlanId} not found`,
+          );
         }
         if (!plan.isActive) {
-          throw new BadRequestException(`License plan "${plan.name}" is not available`);
+          throw new BadRequestException(
+            `License plan "${plan.name}" is not available`,
+          );
         }
         // Plan price overrides product price if set
         if (plan.price > 0) {
           unitPrice = plan.price;
         }
         planName = plan.name;
-        planId = plan._id as Types.ObjectId;
+        planId = plan._id;
       }
 
-      const qty = Math.max(1, cartItem.quantity || 1);
+      // Defense in depth alongside CreateOrderDto validation: integer,
+      // 1..25 — floats/huge quantities must never reach money math.
+      const qty = Math.min(
+        25,
+        Math.max(1, Math.floor(Number(cartItem.quantity) || 1)),
+      );
       const totalPrice = unitPrice * qty;
       subtotal += totalPrice;
 
@@ -157,7 +173,8 @@ export class OrdersService {
         finalTotal = validation.finalTotal;
         appliedCouponCode = validation.coupon.code;
         appliedCouponId = validation.coupon.id;
-        promotionSource = validation.coupon.campaignName || validation.coupon.name;
+        promotionSource =
+          validation.coupon.campaignName || validation.coupon.name;
       }
     }
 
@@ -217,7 +234,10 @@ export class OrdersService {
     }
 
     // Idempotency: If already paid, return existing order
-    if (order.paymentStatus === PaymentStatus.PAID && order.status === OrderStatus.COMPLETED) {
+    if (
+      order.paymentStatus === PaymentStatus.PAID &&
+      order.status === OrderStatus.COMPLETED
+    ) {
       return {
         order,
         message: 'Order was already processed',
@@ -226,8 +246,29 @@ export class OrdersService {
     }
 
     // Prevent confirming cancelled/refunded orders
-    if (order.status === OrderStatus.CANCELLED || order.status === OrderStatus.REFUNDED) {
-      throw new BadRequestException(`Cannot confirm payment for ${order.status} order`);
+    if (
+      order.status === OrderStatus.CANCELLED ||
+      order.status === OrderStatus.REFUNDED
+    ) {
+      throw new BadRequestException(
+        `Cannot confirm payment for ${order.status} order`,
+      );
+    }
+
+    // Atomic claim: concurrent confirmPayment calls (e.g. racing webhook
+    // retries) must not both pass the read-check above and double-fulfill.
+    // Only one caller flips paymentStatus away from non-PAID; losers see null.
+    const claimed = await this.orderModel.findOneAndUpdate(
+      { _id: order._id, paymentStatus: { $ne: PaymentStatus.PAID } },
+      { $set: { status: OrderStatus.PROCESSING } },
+      { new: true },
+    );
+    if (!claimed) {
+      return {
+        order,
+        message: 'Order was already processed',
+        alreadyProcessed: true,
+      };
     }
 
     // Idempotency by paymentReference: Check if another order was already paid with this reference
@@ -255,7 +296,9 @@ export class OrdersService {
       const item = order.items[i];
       const product = await this.productModel.findById(item.productId);
       if (!product) {
-        this.logger.warn(`Product ${item.productId} not found during fulfillment`);
+        this.logger.warn(
+          `Product ${item.productId} not found during fulfillment`,
+        );
         continue;
       }
 
@@ -273,7 +316,12 @@ export class OrdersService {
         license = await this.licenseModel.findOne({ purchaseId: purchase._id });
       } else {
         // Create purchase
-        const purchaseKey = `PUR-${crypto.randomBytes(5).toString('hex').toUpperCase().match(/.{1,4}/g)?.join('-')}`;
+        const purchaseKey = `PUR-${crypto
+          .randomBytes(5)
+          .toString('hex')
+          .toUpperCase()
+          .match(/.{1,4}/g)
+          ?.join('-')}`;
         purchase = await this.purchaseModel.create({
           productId: product._id,
           userId: user._id,
@@ -390,7 +438,12 @@ export class OrdersService {
     }
 
     const [items, total] = await Promise.all([
-      this.orderModel.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
+      this.orderModel
+        .find(filter)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
       this.orderModel.countDocuments(filter),
     ]);
 
@@ -401,15 +454,16 @@ export class OrdersService {
   }
 
   async getStats() {
-    const [totalOrders, pendingOrders, completedOrders, totalRevenue] = await Promise.all([
-      this.orderModel.countDocuments(),
-      this.orderModel.countDocuments({ status: OrderStatus.PENDING }),
-      this.orderModel.countDocuments({ status: OrderStatus.COMPLETED }),
-      this.orderModel.aggregate([
-        { $match: { paymentStatus: PaymentStatus.PAID } },
-        { $group: { _id: null, total: { $sum: '$total' } } },
-      ]),
-    ]);
+    const [totalOrders, pendingOrders, completedOrders, totalRevenue] =
+      await Promise.all([
+        this.orderModel.countDocuments(),
+        this.orderModel.countDocuments({ status: OrderStatus.PENDING }),
+        this.orderModel.countDocuments({ status: OrderStatus.COMPLETED }),
+        this.orderModel.aggregate([
+          { $match: { paymentStatus: PaymentStatus.PAID } },
+          { $group: { _id: null, total: { $sum: '$total' } } },
+        ]),
+      ]);
 
     return {
       totalOrders,
@@ -461,13 +515,17 @@ export class OrdersService {
 
     let licenses: any[] = [];
     if (licenseIds.length > 0) {
-      licenses = await this.licenseModel.find({ _id: { $in: licenseIds } }).lean();
+      licenses = await this.licenseModel
+        .find({ _id: { $in: licenseIds } })
+        .lean();
     } else {
       // Also lookup purchases by orderNumber
       const purchases = await this.purchaseModel.find({ orderNumber }).lean();
       const purchaseIds = purchases.map((p) => p._id);
       if (purchaseIds.length > 0) {
-        licenses = await this.licenseModel.find({ purchaseId: { $in: purchaseIds } }).lean();
+        licenses = await this.licenseModel
+          .find({ purchaseId: { $in: purchaseIds } })
+          .lean();
       }
     }
 
@@ -478,4 +536,3 @@ export class OrdersService {
     };
   }
 }
-

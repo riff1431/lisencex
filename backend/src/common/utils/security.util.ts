@@ -6,11 +6,13 @@ import * as crypto from 'crypto';
  * defaults. If a deployment still uses one of these, it must be treated as
  * public knowledge (anyone with repo access knows it).
  */
-export const LEAKED_JWT_SECRET = 'super_secret_jwt_license_key_2026_secure_auth';
+export const LEAKED_JWT_SECRET =
+  'super_secret_jwt_license_key_2026_secure_auth';
 export const LEAKED_ACTIVATION_SECRET =
   'activation_signing_secret_hmac_2026_license_hub_token_sign';
 
-const DEV_FALLBACK_JWT_SECRET = 'dev_only_insecure_jwt_secret_do_not_use_in_production';
+const DEV_FALLBACK_JWT_SECRET =
+  'dev_only_insecure_jwt_secret_do_not_use_in_production';
 const DEV_FALLBACK_ACTIVATION_SECRET = 'dev_only_insecure_activation_secret';
 
 // Ephemeral secrets must be generated exactly ONCE per process: the JWT
@@ -21,6 +23,21 @@ let cachedEphemeralActivationSecret: string | null = null;
 
 export function isProduction(): boolean {
   return process.env.NODE_ENV === 'production';
+}
+
+/**
+ * Master switch for every payment dev-bypass (simulator gateway, the
+ * *_bypass_signature webhook test signatures, sandbox auto-accept).
+ *
+ * NODE_ENV alone proved too fragile: any deployed environment that forgets
+ * NODE_ENV=production (preview/staging builds) would sell real licenses for
+ * free. Fail-closed: enabled only when NOT production AND the operator set
+ * PAYMENTS_ALLOW_SIMULATION=1 explicitly.
+ */
+export function paymentsSimulationEnabled(): boolean {
+  if (isProduction()) return false;
+  const flag = process.env.PAYMENTS_ALLOW_SIMULATION;
+  return flag === '1' || flag === 'true' || flag === 'yes';
 }
 
 /**
@@ -55,7 +72,9 @@ export function resolveJwtSecret(configValue: string | undefined): string {
 /**
  * Resolve the activation-token signing secret (same policy as JWT).
  */
-export function resolveActivationSecret(configValue: string | undefined): string {
+export function resolveActivationSecret(
+  configValue: string | undefined,
+): string {
   if (configValue && configValue !== LEAKED_ACTIVATION_SECRET) {
     return configValue;
   }
