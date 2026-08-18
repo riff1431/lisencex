@@ -1184,9 +1184,19 @@ export class ActivationsService {
       throw new NotFoundException('Active activation not found');
     }
 
+    // The shared deactivate() path requires proof (signed token or license
+    // key) because the product's client credentials are public. An
+    // authenticated admin is itself the authorization, so resolve the owning
+    // license server-side and supply its key as the proof.
+    const license = await this.licenseModel.findById(activation.licenseId);
+    if (!license) {
+      throw new NotFoundException('Owning license not found');
+    }
+
     return this.deactivate(
       {
         installationId: activation.installationId,
+        licenseKey: license.licenseKey,
         reason: reason || 'Admin panel deactivation',
       },
       actorEmail,
