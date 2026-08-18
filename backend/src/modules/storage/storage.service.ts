@@ -75,6 +75,46 @@ export class StorageService implements OnModuleInit {
   async onModuleInit() {
     await this.seedDefaultConfigs();
     await this.refreshProviders();
+    await this.repairObjectPublicUrls();
+  }
+
+  /**
+   * Self-heal rows created before public URLs were proxied: object-stored
+   * files whose publicUrl still points directly at the (plain-http) storage
+   * endpoint are broken as mixed content on the https storefront. Rewrite
+   * them to the API-streaming routes. Local-provider URLs were always
+   * relative, so the absolute-URL filter targets only object rows.
+   */
+  private async repairObjectPublicUrls(): Promise<void> {
+    try {
+      const fileRes = await this.fileModel.updateMany(
+        { publicUrl: { $regex: /^https?:\/\// } },
+        [
+          {
+            $set: {
+              publicUrl: { $concat: ['/api/v1/public/storage/serve/', '$fileId'] },
+            },
+          },
+        ],
+      );
+      const mediaRes = await this.mediaModel.updateMany(
+        { publicUrl: { $regex: /^https?:\/\// } },
+        [
+          {
+            $set: {
+              publicUrl: { $concat: ['/api/v1/public/media/', '$fileName'] },
+            },
+          },
+        ],
+      );
+      if (fileRes.modifiedCount || mediaRes.modifiedCount) {
+        this.logger.log(
+          `Repaired ${fileRes.modifiedCount} stored-file and ${mediaRes.modifiedCount} media public URLs to API-proxied paths`,
+        );
+      }
+    } catch (err) {
+      this.logger.error('Failed to repair public URLs', err);
+    }
   }
 
   /**
@@ -352,7 +392,16 @@ export class StorageService implements OnModuleInit {
       extension: originalExt.replace(/^\./, ''),
       sizeBytes: file.size || file.buffer.length,
       visibility,
-      publicUrl: isPublic ? uploadResult.url : '',
+      // Self-hosted MinIO/S3 endpoints are frequently plain http on internal
+      // hosts — a browser on the https storefront refuses them as
+      // mixed-content. Public URLs therefore always point at the API's own
+      // streaming route, which fetches the object server-side.
+      publicUrl:
+        isPublic && type !== StorageProviderType.LOCAL
+          ? `/api/v1/public/storage/serve/${fileId}`
+          : isPublic
+            ? uploadResult.url
+            : '',
       checksum,
       uploadedBy: actorEmail,
       category,
