@@ -92,7 +92,8 @@ export function IntegrationPackageModal({
     if (!packageData) return;
     setDownloading(true);
     try {
-      const token = localStorage.getItem('token') || localStorage.getItem('accessToken');
+      // The auth layer persists the access token as 'auth_token' (lib/api.ts, lib/auth-context.tsx)
+      const token = localStorage.getItem('auth_token') || localStorage.getItem('token');
       const downloadUrl = `${API_BASE}/admin/products/${productId}/integration-package/download?framework=${framework}&version=${packageData.packageVersion}`;
 
       const res = await fetch(downloadUrl, {

@@ -256,8 +256,14 @@ export class ProductsService {
   }
 
   async getVersions(productId: string) {
+    // Mirror packages.service.listVersions: query with a cast ObjectId so this
+    // endpoint returns the same documents GET /packages does (a plain string
+    // filter has been observed to match nothing on the deployed cluster).
+    if (!Types.ObjectId.isValid(productId)) {
+      return [];
+    }
     return this.versionModel
-      .find({ productId })
+      .find({ productId: new Types.ObjectId(productId) })
       .sort({ publishedAt: -1 })
       .lean();
   }

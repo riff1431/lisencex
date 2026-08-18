@@ -2,7 +2,7 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { ConfigService } from '@nestjs/config';
-import { Response } from 'express';
+import { Request, Response } from 'express';
 import archiver from 'archiver';
 import * as crypto from 'crypto';
 import { Product, ProductDocument } from '../../database/schemas/product.schema';
@@ -32,17 +32,35 @@ export class ProductsPackageGeneratorService {
     private configService: ConfigService,
   ) {}
 
-  private getApiBaseUrl(): string {
-    return (
-      this.configService.get<string>('API_BASE_URL') ||
-      'http://localhost:5000/api/v1'
-    );
+  /**
+   * Public API base URL embedded into generated SDK packages.
+   * Priority: API_BASE_URL env → request host (proxy-aware) → localhost fallback.
+   * Deriving from the request keeps packages correct on deployments where no
+   * explicit base URL is configured (e.g. Dokploy/Traefik previews).
+   */
+  private getApiBaseUrl(req?: Request): string {
+    const configured = this.configService.get<string>('API_BASE_URL');
+    if (configured) {
+      return configured.replace(/\/+$/, '');
+    }
+    if (req) {
+      const proto =
+        (req.headers['x-forwarded-proto'] as string)?.split(',')[0]?.trim() ||
+        req.protocol;
+      const host =
+        (req.headers['x-forwarded-host'] as string)?.split(',')[0]?.trim() ||
+        req.headers['host'];
+      if (host) {
+        return `${proto}://${host}/api/v1`;
+      }
+    }
+    return 'http://localhost:5000/api/v1';
   }
 
   /**
    * Get package generator metadata & files preview for a product
    */
-  async getPackageOverview(productId: string, framework: IntegrationFramework = 'wordpress_plugin') {
+  async getPackageOverview(productId: string, framework: IntegrationFramework = 'wordpress_plugin', req?: Request) {
     const product = await this.productModel.findById(productId);
     if (!product) {
       throw new NotFoundException('Product not found');
@@ -67,7 +85,7 @@ export class ProductsPackageGeneratorService {
     }
 
     const currentPackageVersion = product.integrationMetadata?.packageVersion || '2.0.0';
-    const files = this.buildPackageFiles(product, credential, framework, currentPackageVersion);
+    const files = this.buildPackageFiles(product, credential, framework, currentPackageVersion, req);
 
     const history = product.integrationMetadata?.packages || [];
 
@@ -151,6 +169,7 @@ export class ProductsPackageGeneratorService {
     framework: IntegrationFramework,
     version: string,
     res: Response,
+    req?: Request,
   ) {
     const product = await this.productModel.findById(productId);
     if (!product) {
@@ -176,7 +195,7 @@ export class ProductsPackageGeneratorService {
     }
 
     const pkgVersion = version || product.integrationMetadata?.packageVersion || '2.0.0';
-    const files = this.buildPackageFiles(product, credential, framework, pkgVersion);
+    const files = this.buildPackageFiles(product, credential, framework, pkgVersion, req);
 
     const zipFilename = `${product.slug}-licensenest-sdk-v${pkgVersion}.zip`;
 
@@ -209,8 +228,9 @@ export class ProductsPackageGeneratorService {
     credential: ProductCredentialDocument,
     framework: IntegrationFramework,
     packageVersion: string,
+    req?: Request,
   ): PackageFile[] {
-    const apiBase = this.getApiBaseUrl();
+    const apiBase = this.getApiBaseUrl(req);
     const slug = product.slug;
     const name = product.name;
     const clientId = credential.clientId;

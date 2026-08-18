@@ -5,10 +5,11 @@ import {
   Param,
   Query,
   Body,
+  Req,
   Res,
   UseGuards,
 } from '@nestjs/common';
-import type { Response } from 'express';
+import type { Request, Response } from 'express';
 import { ProductsPackageGeneratorService } from './products-package-generator.service';
 import type { IntegrationFramework } from './products-package-generator.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -39,8 +40,9 @@ export class ProductsPackageGeneratorController {
   async getPackageOverview(
     @Param('productId') productId: string,
     @Query('framework') framework: IntegrationFramework = 'wordpress_plugin',
+    @Req() req: Request,
   ) {
-    return this.generatorService.getPackageOverview(productId, framework);
+    return this.generatorService.getPackageOverview(productId, framework, req);
   }
 
   @Post('generate')
@@ -62,8 +64,9 @@ export class ProductsPackageGeneratorController {
     @Param('productId') productId: string,
     @Query('framework') framework: IntegrationFramework = 'wordpress_plugin',
     @Query('version') version: string = '2.0.0',
+    @Req() req: Request,
     @Res() res: Response,
   ) {
-    return this.generatorService.streamPackageZip(productId, framework, version, res);
+    return this.generatorService.streamPackageZip(productId, framework, version, res, req);
   }
 }

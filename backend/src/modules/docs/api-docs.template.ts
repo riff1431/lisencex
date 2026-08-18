@@ -4,7 +4,7 @@ export function getApiDocsTemplate(spec: any, baseUrl: string): string {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>\${spec.title} - Developer Portal</title>
+  <title>${spec.title} - Developer Portal</title>
   <!-- Google Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -102,7 +102,7 @@ export function getApiDocsTemplate(spec: any, baseUrl: string): string {
         <span class="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
         API Online
       </span>
-      <span class="text-xs font-mono text-slate-500">v\${spec.version}</span>
+      <span class="text-xs font-mono text-slate-500">v${spec.version}</span>
     </div>
   </header>
 
@@ -239,8 +239,8 @@ export function getApiDocsTemplate(spec: any, baseUrl: string): string {
   <!-- Client-side Javascript -->
   <script>
     // Injected specification and config
-    const spec = \${JSON.stringify(spec)};
-    const baseUrl = '\${baseUrl}';
+    const spec = ${JSON.stringify(spec)};
+    const baseUrl = '${baseUrl}';
     
     // Page state
     let activeSection = 'endpoint'; // 'endpoint', 'sdks', 'errors'
