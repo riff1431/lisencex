@@ -273,6 +273,26 @@ export class StorageService implements OnModuleInit {
   }
 
   /**
+   * Private-object API for non-media artifacts (distributable package ZIPs).
+   * These bypass StoredFile/media semantics entirely — no public serving, no
+   * media rows; access only through short-lived signed URLs.
+   */
+  async isObjectStorageActive(): Promise<boolean> {
+    const { type } = await this.getActiveProvider();
+    return type !== StorageProviderType.LOCAL;
+  }
+
+  async putPrivateObject(
+    buffer: Buffer,
+    key: string,
+    mimeType: string,
+  ): Promise<{ key: string; sizeBytes: number }> {
+    const { provider } = await this.getActiveProvider();
+    const result = await provider.upload(buffer, key, mimeType, false);
+    return { key: result.path, sizeBytes: result.sizeBytes };
+  }
+
+  /**
    * Central Upload Handler for all file types
    */
   async uploadFile(

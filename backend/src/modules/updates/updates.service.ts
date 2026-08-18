@@ -28,6 +28,8 @@ import {
   DownloadLogDocument,
 } from '../../database/schemas/download-log.schema';
 import { TokenService } from '../token/token.service';
+import { StorageService } from '../storage/storage.service';
+import { StorageProviderType } from '../../database/schemas/storage-config.schema';
 import { LicenseStatus } from '../../common/enums/app.enums';
 import {
   signDownloadToken,
@@ -46,7 +48,22 @@ export class UpdatesService {
     @InjectModel(DownloadLog.name)
     private downloadLogModel: Model<DownloadLogDocument>,
     private tokenService: TokenService,
+    private storageService: StorageService,
   ) {}
+
+  /**
+   * Short-lived signed URL for an object-stored package, using the provider
+   * recorded on the version at upload time.
+   */
+  async getPackageSignedUrl(
+    v: { storageKey: string; storageProvider?: string },
+    expiresInSeconds = 300,
+  ): Promise<string> {
+    const provider = this.storageService.getProviderInstance(
+      (v.storageProvider as StorageProviderType) || StorageProviderType.LOCAL,
+    );
+    return provider.getSignedUrl(v.storageKey, expiresInSeconds);
+  }
 
   private resolveEffectiveSettings(product: any, license?: any) {
     const resolvedPlan = license?.licensePlanId as any;
@@ -277,6 +294,9 @@ export class UpdatesService {
       productName: product.name,
       version: payload.version,
       storagePath: version?.storagePath,
+      storageMode: (version as any)?.storageMode || 'local',
+      storageKey: (version as any)?.storageKey,
+      storageProvider: (version as any)?.storageProvider,
       filename: version?.originalFileName || `${product.slug}-${payload.version}.zip`,
       fileSize: version?.fileSize,
       fileChecksum: version?.fileChecksum,

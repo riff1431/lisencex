@@ -62,6 +62,7 @@ export class Media {
   height?: number;
 
   @Prop({
+    type: String,
     required: true,
     enum: StorageProviderType,
     default: StorageProviderType.LOCAL,
@@ -74,6 +75,7 @@ export class Media {
 
   @Prop({
     required: true,
+    type: String,
     enum: FileVisibility,
     default: FileVisibility.PUBLIC,
     index: true,
@@ -82,6 +84,7 @@ export class Media {
 
   @Prop({
     required: true,
+    type: String,
     enum: FileCategory,
     default: FileCategory.GENERAL,
   })

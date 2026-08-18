@@ -26,6 +26,7 @@ export class StoredFile {
   fileId: string; // UUID v4
 
   @Prop({
+    type: String,
     required: true,
     enum: StorageProviderType,
     default: StorageProviderType.LOCAL,
@@ -56,6 +57,7 @@ export class StoredFile {
 
   @Prop({
     required: true,
+    type: String,
     enum: FileVisibility,
     default: FileVisibility.PUBLIC,
     index: true,
@@ -73,6 +75,7 @@ export class StoredFile {
 
   @Prop({
     required: true,
+    type: String,
     enum: FileCategory,
     default: FileCategory.GENERAL,
     index: true,

@@ -184,6 +184,21 @@ export class PackagesController {
       return;
     }
 
+    // Object-stored artifacts: hand the client a short-lived signed URL from
+    // the provider that holds the file — the ZIP streams straight from object
+    // storage and never passes through the API container.
+    if (dl.storageMode === 'object' && dl.storageKey) {
+      try {
+        const signedUrl = await this.packagesService.getPackageSignedUrl(dl, 300);
+        res.redirect(302, signedUrl);
+        return;
+      } catch (e: any) {
+        throw new BadRequestException(
+          'Package file is temporarily unavailable from object storage: ' + (e?.message || 'signing failed'),
+        );
+      }
+    }
+
     if (!dl.storagePath || !existsSync(dl.storagePath)) {
       throw new BadRequestException('Package file not found on server');
     }

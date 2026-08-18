@@ -3,6 +3,7 @@ import {
   NotFoundException,
   BadRequestException,
   ForbiddenException,
+  Logger,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
@@ -31,6 +32,10 @@ import {
   ActivationDocument,
 } from '../../database/schemas/activation.schema';
 import { TokenService } from '../token/token.service';
+import { StorageService } from '../storage/storage.service';
+import {
+  StorageProviderType,
+} from '../../database/schemas/storage-config.schema';
 import { ZipPackageValidator } from '../../common/utils/zip-validator.util';
 import {
   signDownloadToken,
@@ -59,6 +64,7 @@ export class PackageActionDto {
 @Injectable()
 export class PackagesService {
   private readonly storageRoot: string;
+  private readonly logger = new Logger(PackagesService.name);
 
   constructor(
     @InjectModel(ProductVersion.name)
@@ -73,6 +79,7 @@ export class PackagesService {
     private activationModel: Model<ActivationDocument>,
     private tokenService: TokenService,
     private configService: ConfigService,
+    private storageService: StorageService,
   ) {
     // Packages are stored OUTSIDE the public web root
     this.storageRoot = this.configService.get<string>('PACKAGE_STORAGE_PATH')
@@ -128,13 +135,11 @@ export class PackagesService {
     // 4. Compute checksum
     const checksum = await ZipPackageValidator.computeChecksum(file.path);
 
-    // 5. Move to permanent storage location
-    const destDir  = path.join(this.storageRoot, productId);
+    // 5. Persist to the active storage provider. Object storage (MinIO/S3/R2)
+    // survives container rebuilds; local disk is the legacy fallback and
+    // requires a persistent volume mount to survive deploys.
     const filename = `${product.slug}-${dto.version}-${Date.now()}.zip`;
-    const destPath = path.join(destDir, filename);
-
-    fs.mkdirSync(destDir, { recursive: true });
-    fs.renameSync(file.path, destPath);
+    const stored = await this.persistPackageFile(file.path, productId, filename);
 
     // 6. Create (or attach to placeholder) version record
     const isPublic = Boolean(dto.publishImmediately);
@@ -142,7 +147,10 @@ export class PackagesService {
       releaseChannel:       dto.releaseChannel ?? existing?.releaseChannel ?? ReleaseChannel.STABLE,
       packageStatus:        isPublic ? PackageStatus.APPROVED : PackageStatus.PENDING,
       originalFileName:     file.originalname,
-      storagePath:          destPath,
+      storagePath:          stored.storagePath,
+      storageMode:          stored.storageMode,
+      storageKey:           stored.storageKey,
+      storageProvider:      stored.storageProvider,
       fileChecksum:         checksum,
       fileSize:             file.size,
       mimeType:             file.mimetype,
@@ -330,22 +338,17 @@ export class PackagesService {
     // Compute checksum
     const checksum = await ZipPackageValidator.computeChecksum(file.path);
 
-    // Move to storage
-    const destDir  = path.join(this.storageRoot, productId);
+    // Persist replacement to the active storage provider and remove the old artifact
     const filename = `${product.slug}-${version.version}-replace-${Date.now()}.zip`;
-    const destPath = path.join(destDir, filename);
-    fs.mkdirSync(destDir, { recursive: true });
-
-    // Remove old file
-    if (version.storagePath && fs.existsSync(version.storagePath)) {
-      try { fs.unlinkSync(version.storagePath); } catch {}
-    }
-
-    fs.renameSync(file.path, destPath);
+    const stored = await this.persistPackageFile(file.path, productId, filename);
+    await this.deletePackageArtifact(version);
 
     await this.versionModel.findByIdAndUpdate(versionId, {
       $set: {
-        storagePath:       destPath,
+        storagePath:       stored.storagePath,
+        storageMode:       stored.storageMode,
+        storageKey:        stored.storageKey,
+        storageProvider:   stored.storageProvider,
         originalFileName:  file.originalname,
         fileChecksum:      checksum,
         fileSize:          file.size,
@@ -359,6 +362,80 @@ export class PackagesService {
     });
 
     return { success: true, checksum, fileSize: file.size, warnings: validation.warnings };
+  }
+
+  /**
+   * Time-limited signed URL for an object-stored package, using the provider
+   * recorded on the version (not the currently-active one).
+   */
+  async getPackageSignedUrl(dl: { storageKey: string; storageProvider?: string }, expiresInSeconds = 300): Promise<string> {
+    const provider = this.storageService.getProviderInstance(
+      (dl.storageProvider as StorageProviderType) || StorageProviderType.LOCAL,
+    );
+    return provider.getSignedUrl(dl.storageKey, expiresInSeconds);
+  }
+
+  // ─── Artifact persistence (provider-aware) ──────────────────────────────
+
+  /**
+   * Store an uploaded package artifact via the active storage provider.
+   * Object mode keeps artifacts across container rebuilds; local mode is the
+   * legacy volume-mount-dependent path, retained for deployments without
+   * object storage.
+   */
+  private async persistPackageFile(
+    tempPath: string,
+    productId: string,
+    filename: string,
+  ): Promise<{
+    storageMode: 'local' | 'object';
+    storagePath: string;
+    storageKey?: string;
+    storageProvider?: string;
+  }> {
+    const { type } = await this.storageService.getActiveProvider();
+
+    if (type !== StorageProviderType.LOCAL) {
+      const buffer = fs.readFileSync(tempPath);
+      const key = `packages/${productId}/${filename}`;
+      await this.storageService.putPrivateObject(buffer, key, 'application/zip');
+      this.cleanupFile(tempPath);
+      this.logger.log(`Package stored in object storage: ${key} (${type})`);
+      return { storageMode: 'object', storagePath: key, storageKey: key, storageProvider: type };
+    }
+
+    const destDir  = path.join(this.storageRoot, productId);
+    const destPath = path.join(destDir, filename);
+    fs.mkdirSync(destDir, { recursive: true });
+    fs.renameSync(tempPath, destPath);
+    this.logger.warn(
+      `Package stored on LOCAL disk (${destPath}) — files here do not survive container ` +
+      'rebuilds. Configure MinIO/S3/R2 storage (or mount a volume) for durable packages.',
+    );
+    return { storageMode: 'local', storagePath: destPath };
+  }
+
+  /**
+   * Delete a version's artifact wherever it lives. Deletion uses the provider
+   * recorded at upload time — the active provider may have changed since.
+   */
+  private async deletePackageArtifact(version: any): Promise<void> {
+    if (!version?.storagePath) return;
+
+    if (version.storageMode === 'object' && version.storageKey) {
+      try {
+        await this.storageService
+          .getProviderInstance(version.storageProvider as StorageProviderType)
+          .delete(version.storageKey);
+      } catch (e: any) {
+        this.logger.warn(`Failed to delete object ${version.storageKey}: ${e?.message}`);
+      }
+      return;
+    }
+
+    if (fs.existsSync(version.storagePath)) {
+      try { fs.unlinkSync(version.storagePath); } catch {}
+    }
   }
 
   // ─── Download (signed token, time-limited URL) ──────────────────────────
@@ -490,9 +567,13 @@ export class PackagesService {
       source: payload.userId ? 'customer_dashboard' : 'auto_update',
     });
 
-    // Return the storage path (controller will stream the file)
+    // Return the storage location (controller streams local files directly,
+    // or redirects object-stored ones to a short-lived signed URL)
     return {
       storagePath:      version.storagePath,
+      storageMode:      version.storageMode || 'local',
+      storageKey:       version.storageKey,
+      storageProvider:  version.storageProvider,
       downloadPackageUrl: version.downloadPackageUrl,
       filename:         version.originalFileName ?? `package-${version.version}.zip`,
       version:          version.version,

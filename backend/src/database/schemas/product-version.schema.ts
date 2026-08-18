@@ -48,6 +48,23 @@ export class ProductVersion {
   @Prop({ type: String, default: null })
   storagePath?: string;
 
+  /**
+   * Where the package artifact physically lives. 'local' = container disk via
+   * PACKAGE_STORAGE_PATH (wiped on every container rebuild — volume-mount or
+   * object storage required to survive deploys); 'object' = the configured
+   * storage provider (MinIO/S3/R2), with storageKey holding the object key
+   * and storageProvider recording which provider holds it (downloads must
+   * use the provider that stored the file, not the currently-active one).
+   */
+  @Prop({ type: String, enum: ['local', 'object'], default: 'local' })
+  storageMode?: string;
+
+  @Prop({ type: String, default: null })
+  storageKey?: string;
+
+  @Prop({ type: String, default: null })
+  storageProvider?: string;
+
   /** SHA-256 hex checksum of the ZIP file */
   @Prop({ type: String, default: null })
   fileChecksum?: string;
