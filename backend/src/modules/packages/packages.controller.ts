@@ -184,19 +184,30 @@ export class PackagesController {
       return;
     }
 
-    // Object-stored artifacts: hand the client a short-lived signed URL from
-    // the provider that holds the file — the ZIP streams straight from object
-    // storage and never passes through the API container.
+    // Object-stored artifacts stream through the API. A 302 to a signed
+    // object-storage URL would be ideal, but self-hosted MinIO is usually
+    // plain http on an internal host — browsers block that as a
+    // mixed-content download from the https storefront.
     if (dl.storageMode === 'object' && dl.storageKey) {
+      let buffer: Buffer;
       try {
-        const signedUrl = await this.packagesService.getPackageSignedUrl(dl, 300);
-        res.redirect(302, signedUrl);
-        return;
+        buffer = await this.packagesService.getPackageObjectBuffer(dl);
       } catch (e: any) {
         throw new BadRequestException(
-          'Package file is temporarily unavailable from object storage: ' + (e?.message || 'signing failed'),
+          'Package file is temporarily unavailable from object storage: ' + (e?.message || 'read failed'),
         );
       }
+      const filename = encodeURIComponent(dl.filename);
+      res.set({
+        'Content-Type':        'application/zip',
+        'Content-Disposition': `attachment; filename="${filename}"`,
+        'Content-Length':      buffer.length,
+        'X-Package-Version':   dl.version,
+        'X-Package-Checksum':  dl.fileChecksum ?? '',
+        'Cache-Control':       'no-store, no-cache, must-revalidate',
+        'Pragma':              'no-cache',
+      });
+      return new StreamableFile(buffer);
     }
 
     if (!dl.storagePath || !existsSync(dl.storagePath)) {

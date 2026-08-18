@@ -365,20 +365,23 @@ export class PackagesService {
   }
 
   /**
-   * Time-limited signed URL for an object-stored package, using the provider
-   * recorded on the version (not the currently-active one).
+   * Buffer of an object-stored package, fetched via the provider recorded on
+   * the version. Downloads are streamed through the API rather than
+   * redirecting the browser to a signed object-storage URL: self-hosted
+   * MinIO endpoints are frequently plain http/internal, and browsers block
+   * mixed-content downloads from an https page (the tab opens, then dies
+   * with no download).
    */
-  async getPackageSignedUrl(
+  async getPackageObjectBuffer(
     dl: { storageKey?: string | null; storageProvider?: string | null },
-    expiresInSeconds = 300,
-  ): Promise<string> {
+  ): Promise<Buffer> {
     if (!dl.storageKey) {
       throw new BadRequestException('Package version has no object storage key');
     }
     const provider = this.storageService.getProviderInstance(
       (dl.storageProvider as StorageProviderType) || StorageProviderType.LOCAL,
     );
-    return provider.getSignedUrl(dl.storageKey, expiresInSeconds);
+    return provider.download(dl.storageKey);
   }
 
   // ─── Artifact persistence (provider-aware) ──────────────────────────────

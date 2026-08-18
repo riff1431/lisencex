@@ -61,12 +61,22 @@ export class UpdatesController {
       userAgent,
     );
 
-    // Object-stored artifacts stream directly from the storage provider via
-    // a short-lived signed URL — the ZIP never passes through this container.
+    // Object-stored artifacts stream through the API (signed-URL redirects
+    // break as mixed-content downloads on https storefronts).
     if (result.storageMode === 'object' && result.storageKey) {
       try {
-        const signedUrl = await this.updatesService.getPackageSignedUrl(result, 300);
-        return res.redirect(signedUrl);
+        const buffer = await this.updatesService.getPackageObjectBuffer(result);
+        const filename = encodeURIComponent(result.filename || 'package.zip');
+        res.set({
+          'Content-Type': 'application/zip',
+          'Content-Disposition': `attachment; filename="${filename}"`,
+          'Content-Length': buffer.length,
+          'X-Package-Version': result.version,
+          'X-Package-Checksum': result.fileChecksum || '',
+          'Cache-Control': 'no-store, no-cache, must-revalidate',
+          Pragma: 'no-cache',
+        });
+        return res.send(buffer);
       } catch {
         return res.status(503).json({ message: 'Package temporarily unavailable from object storage' });
       }

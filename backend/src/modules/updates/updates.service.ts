@@ -52,20 +52,20 @@ export class UpdatesService {
   ) {}
 
   /**
-   * Short-lived signed URL for an object-stored package, using the provider
-   * recorded on the version at upload time.
+   * Buffer of an object-stored package, fetched via the provider recorded on
+   * the version. Streamed through the API — see PackagesService for why we
+   * do not redirect browsers to signed object-storage URLs.
    */
-  async getPackageSignedUrl(
+  async getPackageObjectBuffer(
     v: { storageKey?: string | null; storageProvider?: string | null },
-    expiresInSeconds = 300,
-  ): Promise<string> {
+  ): Promise<Buffer> {
     if (!v.storageKey) {
       throw new ForbiddenException('Package version has no object storage key');
     }
     const provider = this.storageService.getProviderInstance(
       (v.storageProvider as StorageProviderType) || StorageProviderType.LOCAL,
     );
-    return provider.getSignedUrl(v.storageKey, expiresInSeconds);
+    return provider.download(v.storageKey);
   }
 
   private resolveEffectiveSettings(product: any, license?: any) {
