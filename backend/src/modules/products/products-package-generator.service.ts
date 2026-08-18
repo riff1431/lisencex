@@ -348,6 +348,8 @@ $config = require __DIR__ . '/licensing/config.php';
 $license_manager = new LicenseNest_Plugin_License(
     $config['api_url'],
     $config['product_slug'],
+    $config['client_id'],
+    $config['api_key'],
     $config['product_version'],
     __FILE__
 );
@@ -387,6 +389,8 @@ require_once get_template_directory() . '/licensing/class-licensenest-theme.php'
 $theme_license = new LicenseNest_Theme_License(
     '${apiBase}',
     '${slug}',
+    '${clientId}',
+    '${apiKey}',
     '${version}'
 );
 $theme_license->register();
@@ -564,6 +568,8 @@ abstract class LicenseNest_Base_Client {
     protected string $apiUrl;
     protected string $productSlug;
     protected string $productVersion;
+    protected string $clientId;
+    protected string $apiKey;
     protected int $timeout = 10;
 
     abstract protected function writeCache(array $data): void;
@@ -572,9 +578,11 @@ abstract class LicenseNest_Base_Client {
     abstract protected function getInstallationId(): string;
     abstract protected function getDomain(): string;
 
-    public function __construct(string $apiUrl, string $productSlug, string $productVersion = '1.0.0') {
+    public function __construct(string $apiUrl, string $productSlug, string $client_id, string $api_key, string $productVersion = '1.0.0') {
         $this->apiUrl = rtrim($apiUrl, '/');
         $this->productSlug = $productSlug;
+        $this->clientId = $client_id;
+        $this->apiKey = $api_key;
         $this->productVersion = $productVersion;
     }
 
@@ -655,7 +663,16 @@ abstract class LicenseNest_Base_Client {
         ]);
         try {
             $ch = curl_init($this->apiUrl . '/public/products/' . rawurlencode($this->productSlug) . '/updates?' . $qs);
-            curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => $this->timeout]);
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT        => $this->timeout,
+                CURLOPT_SSL_VERIFYPEER => true,
+                CURLOPT_HTTPHEADER     => [
+                    'Accept: application/json',
+                    'X-Client-ID: ' . $this->clientId,
+                    'X-API-Key: ' . $this->apiKey,
+                ],
+            ]);
             $raw = curl_exec($ch);
             curl_close($ch);
             $json = json_decode($raw, true);
@@ -671,7 +688,13 @@ abstract class LicenseNest_Base_Client {
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_POST           => true,
             CURLOPT_POSTFIELDS     => json_encode($data),
-            CURLOPT_HTTPHEADER     => ['Content-Type: application/json', 'Accept: application/json'],
+            CURLOPT_HTTPHEADER     => [
+                'Content-Type: application/json',
+                'Accept: application/json',
+                'X-Client-ID: ' . $this->clientId,
+                'X-API-Key: ' . $this->apiKey,
+            ],
+            CURLOPT_SSL_VERIFYPEER => true,
             CURLOPT_TIMEOUT        => $this->timeout,
         ]);
         $raw = curl_exec($ch);
@@ -703,8 +726,8 @@ class LicenseNest_Plugin_License extends LicenseNest_Base_Client {
     private string $optionPrefix;
     private string $pageSlug;
 
-    public function __construct(string $apiUrl, string $productSlug, string $productVersion, string $pluginFile) {
-        parent::__construct($apiUrl, $productSlug, $productVersion);
+    public function __construct(string $apiUrl, string $productSlug, string $client_id, string $api_key, string $productVersion, string $pluginFile) {
+        parent::__construct($apiUrl, $productSlug, $client_id, $api_key, $productVersion);
         $this->pluginFile = $pluginFile;
         $this->optionPrefix = 'ln_' . sanitize_key($productSlug) . '_';
         $this->pageSlug = sanitize_key($productSlug) . '-license';
@@ -821,8 +844,8 @@ if (!defined('ABSPATH')) exit;
 require_once __DIR__ . '/class-licensenest-base.php';
 
 class LicenseNest_Theme_License extends LicenseNest_Base_Client {
-    public function __construct(string $apiUrl, string $productSlug, string $productVersion) {
-        parent::__construct($apiUrl, $productSlug, $productVersion);
+    public function __construct(string $apiUrl, string $productSlug, string $client_id, string $api_key, string $productVersion) {
+        parent::__construct($apiUrl, $productSlug, $client_id, $api_key, $productVersion);
     }
     protected function writeCache(array $data): void { update_option('ln_theme_' . sanitize_key($this->productSlug), $data, false); }
     protected function readCache(): ?array { return get_option('ln_theme_' . sanitize_key($this->productSlug)) ?: null; }
@@ -866,6 +889,8 @@ class LicenseNest_PHP extends LicenseNest_Base_Client {
         parent::__construct(
             $config['api_url'] ?? '${apiBase}',
             $config['product_slug'] ?? '${slug}',
+            $config['client_id'] ?? '${clientId}',
+            $config['api_key'] ?? '${apiKey}',
             $config['product_version'] ?? '${version}'
         );
         $this->storagePath = $config['storage_path'] ?? (__DIR__ . '/.license_storage.json');
@@ -955,11 +980,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 export abstract class LicenseNestBaseClient {
   protected apiUrl: string;
   protected productSlug: string;
+  protected clientId: string;
+  protected apiKey: string;
   protected productVersion: string;
 
-  constructor(apiUrl: string, productSlug: string, productVersion: string) {
+  constructor(apiUrl: string, productSlug: string, clientId: string, apiKey: string, productVersion: string) {
     this.apiUrl = apiUrl.replace(/\\/$/, '');
     this.productSlug = productSlug;
+    this.clientId = clientId;
+    this.apiKey = apiKey;
     this.productVersion = productVersion;
   }
 
@@ -1029,7 +1058,12 @@ export abstract class LicenseNestBaseClient {
   protected async post(endpoint: string, body: any): Promise<any> {
     const res = await fetch(\`\${this.apiUrl}\${endpoint}\`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        'X-Client-ID': this.clientId,
+        'X-API-Key': this.apiKey,
+      },
       body: JSON.stringify(body),
     });
     const json = await res.json();
@@ -1072,6 +1106,8 @@ export class LicenseNestNextApp extends LicenseNestBaseClient {
     super(
       config.apiUrl || '${apiBase}',
       config.productSlug || '${slug}',
+      config.clientId || '${clientId}',
+      config.apiKey || '${apiKey}',
       config.productVersion || '${version}'
     );
     this.storageFilePath = config.storagePath || path.join(process.cwd(), '.license_data.json');
